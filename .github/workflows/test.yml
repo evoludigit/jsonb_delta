@@ -122,20 +122,20 @@ jobs:
             fi
           done
 
-          # Run v0.3.0 smoke tests
-          echo "Running v0.3.0 smoke tests..."
+          # Run v0.1.0 smoke tests
+          echo "Running v0.1.0 smoke tests..."
           if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo -u postgres psql -d test_jsonb_ivm -f test/smoke_test_v0.3.0.sql > test_output_smoke_v0.3.0.txt 2>&1
+            sudo -u postgres psql -d test_jsonb_ivm -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            psql -d test_jsonb_ivm -f test/smoke_test_v0.3.0.sql > test_output_smoke_v0.3.0.txt 2>&1
+            psql -d test_jsonb_ivm -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
           fi
 
           if [ $? -ne 0 ]; then
-            echo "❌ FAILED: v0.3.0 smoke tests"
-            cat test_output_smoke_v0.3.0.txt
+            echo "❌ FAILED: v0.1.0 smoke tests"
+            cat test_output_smoke_v0.1.0.txt
             exit 1
           else
-            echo "✅ PASSED: v0.3.0 smoke tests"
+            echo "✅ PASSED: v0.1.0 smoke tests"
           fi
 
       - name: Validate SQL schema generation
@@ -144,9 +144,9 @@ jobs:
           cargo pgrx schema > /tmp/generated-schema.sql
 
           # Check if schema matches committed version
-          if ! diff -u sql/jsonb_ivm--0.3.0.sql /tmp/generated-schema.sql; then
+          if ! diff -u sql/jsonb_ivm--0.1.0.sql /tmp/generated-schema.sql; then
             echo "❌ Generated schema doesn't match committed version!"
-            echo "Run: cargo pgrx schema > sql/jsonb_ivm--0.3.0.sql"
+            echo "Run: cargo pgrx schema > sql/jsonb_ivm--0.1.0.sql"
             exit 1
           fi
 
