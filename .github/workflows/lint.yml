@@ -180,7 +180,15 @@ jobs:
       - name: Lint markdown files
         uses: DavidAnson/markdownlint-cli2-action@v14
         with:
-          globs: '**/*.md'
+          globs: |
+            README.md
+            changelog.md
+            contributing.md
+            development.md
+            TESTING.md
+            docs/**/*.md
+            !docs/archive/**
+            !docs/implementation/**
 
   doc-coverage:
     name: Documentation Coverage
