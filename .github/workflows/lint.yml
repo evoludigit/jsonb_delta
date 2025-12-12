@@ -162,6 +162,14 @@ jobs:
         with:
           use-quiet-mode: 'yes'
           config-file: '.github/markdown-link-check-config.json'
+          folder-path: '.'
+          file-path: |
+            ./README.md
+            ./changelog.md
+            ./contributing.md
+            ./development.md
+            ./TESTING.md
+            ./docs
 
   markdown-lint:
     name: Markdown Lint
