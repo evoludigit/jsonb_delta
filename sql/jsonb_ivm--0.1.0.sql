@@ -21,7 +21,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_contains_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:675
+-- src/lib.rs:676
 -- jsonb_ivm::jsonb_array_delete_where
 CREATE  FUNCTION "jsonb_array_delete_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -35,7 +35,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_delete_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:764
+-- src/lib.rs:765
 -- jsonb_ivm::jsonb_array_insert_where
 CREATE  FUNCTION "jsonb_array_insert_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -50,7 +50,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_insert_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:360
+-- src/lib.rs:361
 -- jsonb_ivm::jsonb_array_update_multi_row
 CREATE  FUNCTION "jsonb_array_update_multi_row"(
 	"targets" jsonb[], /* pgrx::datum::array::Array<'_, pgrx::datum::json::JsonB> */
@@ -67,7 +67,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_multi_row_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:177
+-- src/lib.rs:178
 -- jsonb_ivm::jsonb_array_update_where
 CREATE  FUNCTION "jsonb_array_update_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -82,7 +82,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:254
+-- src/lib.rs:255
 -- jsonb_ivm::jsonb_array_update_where_batch
 CREATE  FUNCTION "jsonb_array_update_where_batch"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -120,7 +120,7 @@ AS 'MODULE_PATHNAME', 'jsonb_extract_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:416
+-- src/lib.rs:417
 -- jsonb_ivm::jsonb_merge_at_path
 CREATE  FUNCTION "jsonb_merge_at_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -133,7 +133,7 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_at_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:108
+-- src/lib.rs:109
 -- jsonb_ivm::jsonb_merge_shallow
 CREATE  FUNCTION "jsonb_merge_shallow"(
 	"target" jsonb, /* core::option::Option<pgrx::datum::json::JsonB> */
@@ -145,7 +145,7 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_shallow_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:613
+-- src/lib.rs:614
 -- jsonb_ivm::jsonb_smart_patch_array
 CREATE  FUNCTION "jsonb_smart_patch_array"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -160,7 +160,7 @@ AS 'MODULE_PATHNAME', 'jsonb_smart_patch_array_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:567
+-- src/lib.rs:568
 -- jsonb_ivm::jsonb_smart_patch_nested
 CREATE  FUNCTION "jsonb_smart_patch_nested"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -173,7 +173,7 @@ AS 'MODULE_PATHNAME', 'jsonb_smart_patch_nested_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:530
+-- src/lib.rs:531
 -- jsonb_ivm::jsonb_smart_patch_scalar
 CREATE  FUNCTION "jsonb_smart_patch_scalar"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */

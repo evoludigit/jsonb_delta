@@ -21,6 +21,7 @@ pub mod pg_test {
         // Perform one-time initialization when the pg_test framework starts
     }
 
+    #[must_use]
     pub fn postgresql_conf_options() -> Vec<&'static str> {
         // Specify additional postgresql.conf settings if needed
         vec![]
@@ -427,7 +428,7 @@ fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: pgrx::Array<&str>) ->
     };
 
     // Collect path into owned Vec<String> to avoid lifetime issues
-    let path_vec: Vec<String> = path.iter().flatten().map(|s| s.to_string()).collect();
+    let path_vec: Vec<String> = path.iter().flatten().map(ToString::to_string).collect();
 
     // If path is empty, merge at root
     if path_vec.is_empty() {
@@ -843,14 +844,13 @@ fn compare_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     match (a, b) {
         // Numbers - try exact integer comparison first for precision
         (Value::Number(a_num), Value::Number(b_num)) => {
-            match (a_num.as_i64(), b_num.as_i64()) {
-                (Some(a_int), Some(b_int)) => a_int.cmp(&b_int),
-                _ => {
-                    // Fall back to float comparison for non-integers
-                    let a_f64 = a_num.as_f64().unwrap_or(0.0);
-                    let b_f64 = b_num.as_f64().unwrap_or(0.0);
-                    a_f64.partial_cmp(&b_f64).unwrap_or(Ordering::Equal)
-                }
+            if let (Some(a_int), Some(b_int)) = (a_num.as_i64(), b_num.as_i64()) {
+                a_int.cmp(&b_int)
+            } else {
+                // Fall back to float comparison for non-integers
+                let a_f64 = a_num.as_f64().unwrap_or(0.0);
+                let b_f64 = b_num.as_f64().unwrap_or(0.0);
+                a_f64.partial_cmp(&b_f64).unwrap_or(Ordering::Equal)
             }
         }
         // Strings (includes timestamps)
