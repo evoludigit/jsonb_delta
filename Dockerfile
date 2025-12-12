@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     libclang-dev \
     pkg-config \
     postgresql-server-dev-all \
+    libreadline-dev \
     bison \
     flex \
     && rm -rf /var/lib/apt/lists/*

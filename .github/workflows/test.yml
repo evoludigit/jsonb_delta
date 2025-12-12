@@ -18,21 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         pg-version: [13, 14, 15, 16, 17, 18]
-        os: [ubuntu-latest, macos-latest]
-        exclude:
-          # macOS testing is expensive, only test latest stable PG
-          - os: macos-latest
-            pg-version: 13
-          - os: macos-latest
-            pg-version: 14
-          - os: macos-latest
-            pg-version: 15
-          - os: macos-latest
-            pg-version: 16
-          # PG18 has compatibility issues with pgrx 0.16.1 on macOS ARM64
-          # Skip macOS PG18 until pgrx has better support
-          - os: macos-latest
-            pg-version: 18
+        os: [ubuntu-latest]
+        # macOS testing disabled due to pgrx 0.16.1 ARM64 linker issues
+        # Re-enable when upgrading to pgrx 0.17+ with better ARM64 support
 
     steps:
       - name: Checkout code
