@@ -57,7 +57,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
-          sudo systemctl start postgresql@17-main || true
+          sudo pg_ctlcluster 17 main start || sudo systemctl start postgresql@17-main || true
           sudo -u postgres psql -c "DROP DATABASE IF EXISTS test_jsonb_ivm;" || true
           sudo -u postgres psql -c "CREATE DATABASE test_jsonb_ivm;"
           sudo -u postgres psql -d test_jsonb_ivm -c "CREATE EXTENSION jsonb_ivm;"
