@@ -50,6 +50,10 @@ jobs:
             sudo pg_ctlcluster 17 main start || true
           fi
 
+          # Verify cluster is running
+          sudo pg_lsclusters
+          sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
+
       - name: Install cargo-pgrx
         run: cargo install --locked cargo-pgrx --version 0.16.1
 

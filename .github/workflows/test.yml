@@ -71,6 +71,10 @@ jobs:
             else
               sudo pg_ctlcluster ${{ matrix.pg-version }} main start || true
             fi
+
+            # Verify cluster is running
+            sudo pg_lsclusters
+            sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
           elif [ "$RUNNER_OS" == "macOS" ]; then
             brew install postgresql@${{ matrix.pg-version }}
             brew services start postgresql@${{ matrix.pg-version }}
