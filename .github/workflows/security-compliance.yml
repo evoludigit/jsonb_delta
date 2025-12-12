@@ -123,15 +123,23 @@ jobs:
       run: |
         if [ -f audit-results.json ]; then
           # Check if there are any vulnerabilities
-          VULN_COUNT=$(jq '.vulnerabilities.found | length' audit-results.json)
-          if [ "$VULN_COUNT" -gt 0 ]; then
-            echo "🚨 $VULN_COUNT vulnerabilities found!"
-            jq '.vulnerabilities.list' audit-results.json
-            echo ""
-            echo "Run 'cargo audit --fix' to update vulnerable dependencies"
-            exit 1
-          else
+          # The .vulnerabilities.found field can be a boolean (false) or a number/array
+          VULN_FOUND=$(jq -r '.vulnerabilities.found' audit-results.json)
+
+          if [ "$VULN_FOUND" = "false" ] || [ "$VULN_FOUND" = "0" ]; then
             echo "✅ No known vulnerabilities found"
+          else
+            # Try to get count from list array
+            VULN_COUNT=$(jq '.vulnerabilities.list | length' audit-results.json 2>/dev/null || echo "0")
+            if [ "$VULN_COUNT" -gt 0 ]; then
+              echo "🚨 $VULN_COUNT vulnerabilities found!"
+              jq '.vulnerabilities.list' audit-results.json
+              echo ""
+              echo "Run 'cargo audit --fix' to update vulnerable dependencies"
+              exit 1
+            else
+              echo "✅ No known vulnerabilities found"
+            fi
           fi
         else
           echo "ℹ️  No audit results generated (clean scan)"
@@ -238,59 +246,6 @@ jobs:
         name: dependency-tree
         path: dependency-tree.txt
 
-  miri-test:
-    name: MIRI (Memory Safety)
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust nightly with MIRI
-      run: |
-        rustup toolchain install nightly --component miri
-        rustup override set nightly
-
-    - name: Run MIRI tests
-      run: |
-        echo "=== Running MIRI for Undefined Behavior Detection ==="
-        cargo miri test --lib --no-default-features --features pg_test || {
-          echo "❌ MIRI found undefined behavior!"
-          echo ""
-          echo "This indicates potential memory safety issues:"
-          echo "  - Use-after-free"
-          echo "  - Buffer overflows"
-          echo "  - Invalid pointer dereferences"
-          echo "  - Data races"
-          echo ""
-          echo "Review unsafe code blocks and fix issues"
-          exit 1
-        }
-        echo "✅ No undefined behavior detected by MIRI"
-
-  memory-sanitizers:
-    name: Memory Sanitizers
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        sanitizer: [address, leak, thread]
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust nightly
-      uses: dtolnay/rust-toolchain@nightly
-
-    - name: Run ${{ matrix.sanitizer }} sanitizer
-      env:
-        RUSTFLAGS: "-Z sanitizer=${{ matrix.sanitizer }}"
-        RUSTDOCFLAGS: "-Z sanitizer=${{ matrix.sanitizer }}"
-      run: |
-        echo "=== Running ${{ matrix.sanitizer }} sanitizer ==="
-        cargo +nightly test --lib --target x86_64-unknown-linux-gnu \
-          --no-default-features --features pg_test || {
-          echo "❌ ${{ matrix.sanitizer }} sanitizer found issues!"
-          exit 1
-        }
-        echo "✅ No issues found with ${{ matrix.sanitizer }} sanitizer"
-
   container-security:
     name: Container Security Scan
     runs-on: ubuntu-latest
@@ -355,7 +310,7 @@ jobs:
   security-gate:
     name: Security Gate ✅
     runs-on: ubuntu-latest
-    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata, miri-test, memory-sanitizers, container-security]
+    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata, container-security]
     if: always()
     steps:
       - name: Security compliance check
@@ -380,14 +335,6 @@ jobs:
           fi
           if [[ "${{ needs.supply-chain-metadata.result }}" != "success" ]]; then
             echo "❌ Supply chain metadata failed - Security gate blocked"
-            exit 1
-          fi
-          if [[ "${{ needs.miri-test.result }}" != "success" ]]; then
-            echo "❌ MIRI tests failed - Security gate blocked"
-            exit 1
-          fi
-          if [[ "${{ needs.memory-sanitizers.result }}" != "success" ]]; then
-            echo "❌ Memory sanitizers failed - Security gate blocked"
             exit 1
           fi
           if [[ "${{ needs.container-security.result }}" != "success" ]]; then

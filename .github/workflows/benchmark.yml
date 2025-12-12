@@ -82,8 +82,16 @@ jobs:
 
       - name: Parse benchmark results
         run: |
-          # Extract timing from benchmark output
-          grep "Execution time:" benchmark_results.txt > timings.txt
+          # Extract timing from benchmark output (\timing on outputs "Time: X ms")
+          grep -E "Time: [0-9]" benchmark_results.txt > timings.txt || echo "No timing data found"
+
+          # Display results
+          if [ -s timings.txt ]; then
+            echo "=== Benchmark Timings ==="
+            cat timings.txt
+          else
+            echo "⚠️  No timing data extracted from benchmark run"
+          fi
 
           # Compare with baseline (if exists)
           if [ -f benchmark_baseline.txt ]; then
