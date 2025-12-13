@@ -36,7 +36,7 @@ COPY jsonb_ivm.control ./
 RUN cargo build --release --no-default-features --features pg17
 
 # Package with explicit pg_config path (standard pgrx Docker pattern)
-RUN cargo pgrx package --pg-config /root/.pgrx/17.2/pgrx-install/bin/pg_config
+RUN cargo pgrx package --pg-config /root/.pgrx/17.7/pgrx-install/bin/pg_config
 
 # =============================================================================
 # Stage 2: Production
