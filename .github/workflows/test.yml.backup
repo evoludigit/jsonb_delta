@@ -1,0 +1,342 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: PostgreSQL ${{ matrix.pg-version }} (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pg-version: [13, 14, 15, 16, 17, 18]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install PostgreSQL ${{ matrix.pg-version }}
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Add PostgreSQL APT repository
+            sudo apt-get install -y wget gnupg
+            sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+            sudo apt-get update
+            sudo apt-get install -y \
+              postgresql-${{ matrix.pg-version }} \
+              postgresql-server-dev-${{ matrix.pg-version }}
+
+            # Create and start cluster if it doesn't exist, or start if exists but down
+            if ! sudo pg_lsclusters -h | grep -q "^${{ matrix.pg-version }} main"; then
+              # Cluster doesn't exist, create it
+              sudo pg_createcluster ${{ matrix.pg-version }} main --start || true
+            else
+              # Cluster exists, ensure it's running
+              sudo pg_ctlcluster ${{ matrix.pg-version }} main start || true
+            fi
+
+            # Verify cluster is running
+            sudo pg_lsclusters
+            sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install postgresql@${{ matrix.pg-version }}
+            brew services start postgresql@${{ matrix.pg-version }}
+
+            # Add PostgreSQL to PATH - handle both Intel and Apple Silicon paths
+            if [ -d "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin" ]; then
+              echo "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin" >> $GITHUB_PATH
+            else
+              echo "/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin" >> $GITHUB_PATH
+            fi
+          fi
+
+      - name: Install cargo-pgrx
+        run: |
+          cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cargo pgrx init --pg${{ matrix.pg-version }}=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Handle both Homebrew paths (Intel and Apple Silicon)
+            if [ -f "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config" ]; then
+              cargo pgrx init --pg${{ matrix.pg-version }}=/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config
+            else
+              cargo pgrx init --pg${{ matrix.pg-version }}=/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config
+            fi
+          fi
+
+      - name: Build extension
+        run: |
+          cargo build --release --locked --no-default-features --features pg${{ matrix.pg-version }}
+
+      - name: Install extension
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cargo pgrx install --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --release --sudo
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Handle both Homebrew paths (Intel and Apple Silicon)
+            if [ -f "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config" ]; then
+              cargo pgrx install --pg-config=/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config --release --sudo
+            else
+              cargo pgrx install --pg-config=/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config --release --sudo
+            fi
+          fi
+
+      - name: Run SQL integration tests
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Get the port for this PostgreSQL version
+            PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
+            echo "Using PostgreSQL on port $PG_PORT"
+
+            sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_ivm;" || true
+            sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_ivm;"
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            psql -c "DROP DATABASE IF EXISTS test_jsonb_ivm;" || true
+            psql -c "CREATE DATABASE test_jsonb_ivm;"
+          fi
+
+          # Create extension
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm -c "CREATE EXTENSION jsonb_ivm;"
+          else
+            psql -d test_jsonb_ivm -c "CREATE EXTENSION jsonb_ivm;"
+          fi
+
+          # Run all test files
+          for test_file in test/sql/*.sql; do
+            echo "Running $test_file..."
+            if [ "$RUNNER_OS" == "Linux" ]; then
+              sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm -f "$test_file" > "test_output_$(basename $test_file).txt" 2>&1
+            elif [ "$RUNNER_OS" == "macOS" ]; then
+              psql -d test_jsonb_ivm -f "$test_file" > "test_output_$(basename $test_file).txt" 2>&1
+            fi
+
+            if [ $? -ne 0 ]; then
+              echo "❌ FAILED: $test_file"
+              cat "test_output_$(basename $test_file).txt"
+              exit 1
+            else
+              echo "✅ PASSED: $test_file"
+            fi
+          done
+
+          # Run v0.1.0 smoke tests
+          echo "Running v0.1.0 smoke tests..."
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            psql -d test_jsonb_ivm -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
+          fi
+
+          if [ $? -ne 0 ]; then
+            echo "❌ FAILED: v0.1.0 smoke tests"
+            cat test_output_smoke_v0.1.0.txt
+            exit 1
+          else
+            echo "✅ PASSED: v0.1.0 smoke tests"
+          fi
+
+      - name: Validate SQL schema generation
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Get the port for this PostgreSQL version
+            PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
+            echo "Using PostgreSQL on port $PG_PORT for schema generation"
+
+            # Set PGPORT for pgrx to use
+            export PGPORT=$PG_PORT
+          fi
+
+          # Generate schema using the correct PostgreSQL version
+          cargo pgrx schema pg${{ matrix.pg-version }} > /tmp/generated-schema.sql
+
+          # Check if schema matches committed version
+          if ! diff -u sql/jsonb_ivm--0.1.0.sql /tmp/generated-schema.sql; then
+            echo "❌ Generated schema doesn't match committed version!"
+            echo "Run: cargo pgrx schema > sql/jsonb_ivm--0.1.0.sql"
+            exit 1
+          fi
+
+          echo "✅ Schema generation validated"
+
+      - name: Generate coverage report
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        run: |
+          cargo install cargo-tarpaulin
+          # Run tarpaulin with correct pgrx flags
+          cargo tarpaulin --no-default-features --features pg17 \
+            --out Xml --output-dir ./coverage || {
+            echo "⚠️  cargo-tarpaulin failed (common with pgrx extensions)"
+            echo "Creating empty coverage file for workflow to continue"
+            mkdir -p ./coverage
+            echo '<?xml version="1.0" ?><coverage><packages></packages></coverage>' > ./coverage/cobertura.xml
+          }
+
+      - name: Upload to Codecov
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/cobertura.xml
+          fail_ci_if_error: false  # Don't block on coverage issues
+
+      - name: Check coverage threshold
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        continue-on-error: true  # Don't fail the build if coverage check fails
+        run: |
+          # Install jq for JSON parsing
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Generate JSON coverage report with correct flags
+          if cargo tarpaulin --no-default-features --features pg17 \
+               --out Json --output-dir ./coverage 2>/dev/null; then
+            # Extract coverage percentage
+            COVERAGE=$(jq -r '.coverage' ./coverage/coverage.json 2>/dev/null || echo "0")
+
+            echo "Current coverage: ${COVERAGE}%"
+
+            # Check if coverage meets 80% threshold
+            if (( $(echo "${COVERAGE} < 80.0" | bc -l) )); then
+              echo "⚠️  Code coverage ${COVERAGE}% is below 80% threshold"
+              echo "ℹ️  This is informational only - not failing the build"
+            else
+              echo "✅ Code coverage ${COVERAGE}% meets 80% threshold"
+            fi
+          else
+            echo "⚠️  Could not generate coverage report (tarpaulin limitation with pgrx)"
+            echo "ℹ️  Skipping coverage threshold check"
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-pg${{ matrix.pg-version }}
+          path: test_output_*.txt
+          if-no-files-found: ignore
+
+  property-tests:
+    name: Property-Based Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run property tests
+        run: |
+          ./scripts/run_property_tests.sh 10000
+
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+       - name: Install PostgreSQL 17
+         run: |
+           sudo apt-get install -y wget gnupg
+           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+           sudo apt-get update
+           sudo apt-get install -y postgresql-17 postgresql-server-dev-17
+
+           # Stop default cluster if it exists
+           sudo pg_ctlcluster 17 main stop || true
+
+           # Drop and recreate cluster to ensure clean state
+           sudo pg_dropcluster --stop 17 main || true
+           sudo pg_createcluster 17 main --start
+
+           # Verify cluster is running
+           sudo pg_lsclusters
+
+       - name: Configure PostgreSQL
+         run: |
+           # Configure trust authentication for local connections (CI only)
+           sudo sed -i 's/^local.*all.*postgres.*peer/local all postgres trust/' /etc/postgresql/17/main/pg_hba.conf
+           sudo sed -i 's/^host.*all.*all.*127.0.0.1.*scram-sha-256/host all all 127.0.0.1\/32 trust/' /etc/postgresql/17/main/pg_hba.conf
+
+           # Reload PostgreSQL to apply changes
+           sudo pg_ctlcluster 17 main reload
+
+           # Wait for PostgreSQL to be ready
+           timeout 30 bash -c 'until pg_isready -h localhost -p 5432 -U postgres -q; do sleep 1; done'
+
+           echo "✅ PostgreSQL is ready and accepting connections"
+
+       - name: Install cargo-pgrx
+        run: cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+
+      - name: Build extension
+        run: cargo build --release --locked --no-default-features --features pg17
+
+      - name: Install extension
+        run: cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release --sudo
+
+      - name: Run load tests
+        run: |
+          ./scripts/run_load_tests.sh

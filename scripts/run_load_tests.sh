@@ -68,13 +68,13 @@ CREATE TABLE test_jsonb (
     data JSONB
 );
 
--- Generate test data with arrays for array operations
+-- Generate test data with arrays for array operations (using UUIDs for IDs)
 INSERT INTO test_jsonb (data)
 SELECT jsonb_build_object(
-    'id', i,
+    'id', gen_random_uuid()::text,
     'items', jsonb_build_array(
-        jsonb_build_object('id', i, 'value', i * 10),
-        jsonb_build_object('id', i + 1000, 'value', (i + 1000) * 10)
+        jsonb_build_object('id', gen_random_uuid()::text, 'value', i * 10),
+        jsonb_build_object('id', gen_random_uuid()::text, 'value', (i + 1000) * 10)
     ),
     'metadata', jsonb_build_object('created_at', now()::text)
 )

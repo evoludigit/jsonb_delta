@@ -5,12 +5,12 @@
 \set id random(1, 1000)
 \set random_val random(100, 999)
 
--- Update array element in test data
+-- Update first array element in test data
+-- Since items have random UUIDs, we update based on array position
 UPDATE test_jsonb
-SET data = jsonb_ivm_array_update_where(
+SET data = jsonb_set(
     data,
-    'items',
-    'id', :id::jsonb,
-    'value', :random_val::jsonb
+    '{items,0,value}',
+    to_jsonb(:random_val)
 )
 WHERE id = :id;

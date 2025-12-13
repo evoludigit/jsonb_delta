@@ -6,7 +6,7 @@
 \set random_val random(100, 999)
 
 UPDATE test_jsonb
-SET data = jsonb_ivm_deep_merge(
+SET data = jsonb_deep_merge(
     data,
     jsonb_build_object('updated_at', now()::text, 'random_field', :random_val)
 )
