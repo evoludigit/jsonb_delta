@@ -5,9 +5,31 @@ set -e
 echo "🚀 Starting PostgreSQL load tests for jsonb_ivm..."
 echo "=================================================="
 
+# CI environment detection and configuration
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    export PGHOST=localhost
+    export PGPORT=5432
+    export PGUSER=postgres
+fi
+
 # Check if PostgreSQL is running
 if ! pg_isready -q; then
-    echo "❌ PostgreSQL is not running. Please start PostgreSQL first."
+    echo "❌ PostgreSQL is not running or not accepting connections."
+    echo ""
+    echo "🔍 Debugging information:"
+    echo "  PGHOST: ${PGHOST:-<not set>}"
+    echo "  PGPORT: ${PGPORT:-<not set>}"
+    echo "  PGUSER: ${PGUSER:-<not set>}"
+    echo ""
+
+    # Try to get more info
+    if command -v pg_lsclusters &> /dev/null; then
+        echo "📊 PostgreSQL clusters:"
+        pg_lsclusters 2>&1 || echo "  (cannot list clusters)"
+    fi
+
+    echo ""
+    echo "💡 To start PostgreSQL:"
     echo "   On Ubuntu/Debian: sudo systemctl start postgresql"
     echo "   On macOS: brew services start postgresql"
     exit 1

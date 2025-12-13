@@ -29,6 +29,8 @@ WORKDIR /build
 # Copy source code
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
+COPY sql/ ./sql/
+COPY jsonb_ivm.control ./
 
 # Build extension
 RUN cargo pgrx package --pg-config /root/.pgrx/17.2/pgrx-install/bin/pg_config
