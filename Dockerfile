@@ -33,8 +33,10 @@ COPY sql/ ./sql/
 COPY jsonb_ivm.control ./
 
 # Build extension for PostgreSQL 17
-# Use cargo pgrx package with explicit version target
-RUN cargo pgrx package --pg-version 17
+RUN cargo build --release --no-default-features --features pg17
+
+# Package with explicit pg_config path (standard pgrx Docker pattern)
+RUN cargo pgrx package --pg-config /root/.pgrx/17.2/pgrx-install/bin/pg_config
 
 # =============================================================================
 # Stage 2: Production
