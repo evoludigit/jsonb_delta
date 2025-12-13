@@ -7,46 +7,62 @@ echo "=================================================="
 
 # CI environment detection and configuration
 if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
-    export PGHOST=localhost
-    export PGPORT=5432
+    # Use Unix socket (default for ubuntu pg_createcluster)
     export PGUSER=postgres
+    # Don't set PGHOST to force Unix socket usage
 fi
 
-# Check if PostgreSQL is running
-if ! pg_isready -q; then
-    echo "❌ PostgreSQL is not running or not accepting connections."
-    echo ""
-    echo "🔍 Debugging information:"
-    echo "  PGHOST: ${PGHOST:-<not set>}"
-    echo "  PGPORT: ${PGPORT:-<not set>}"
-    echo "  PGUSER: ${PGUSER:-<not set>}"
-    echo ""
-
-    # Try to get more info
-    if command -v pg_lsclusters &> /dev/null; then
-        echo "📊 PostgreSQL clusters:"
-        pg_lsclusters 2>&1 || echo "  (cannot list clusters)"
+# Check if PostgreSQL is running using sudo -u postgres for Unix socket
+echo "🔍 Checking PostgreSQL connectivity..."
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    # CI environment - use sudo
+    if ! sudo -u postgres psql -c "SELECT 1;" > /dev/null 2>&1; then
+        echo "❌ PostgreSQL is not running or not accepting connections."
+        if command -v pg_lsclusters &> /dev/null; then
+            echo "📊 PostgreSQL clusters:"
+            sudo pg_lsclusters 2>&1 || echo "  (cannot list clusters)"
+        fi
+        echo ""
+        echo "💡 To start PostgreSQL:"
+        echo "   On Ubuntu/Debian: sudo systemctl start postgresql"
+        exit 1
     fi
-
-    echo ""
-    echo "💡 To start PostgreSQL:"
-    echo "   On Ubuntu/Debian: sudo systemctl start postgresql"
-    echo "   On macOS: brew services start postgresql"
-    exit 1
+else
+    # Local environment - use pg_isready
+    if ! pg_isready -q; then
+        echo "❌ PostgreSQL is not running or not accepting connections."
+        echo ""
+        echo "💡 To start PostgreSQL:"
+        echo "   On Ubuntu/Debian: sudo systemctl start postgresql"
+        echo "   On macOS: brew services start postgresql"
+        exit 1
+    fi
 fi
+echo "✅ PostgreSQL is running"
 
 # Setup test database
+echo ""
 echo "📝 Setting up test database..."
-psql -U postgres -c "DROP DATABASE IF EXISTS loadtest;" 2>/dev/null || true
-psql -U postgres -c "CREATE DATABASE loadtest;"
+
+# Helper function to run psql (handles CI vs local)
+run_psql() {
+    if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+        sudo -u postgres psql "$@"
+    else
+        psql -U postgres "$@"
+    fi
+}
+
+run_psql -c "DROP DATABASE IF EXISTS loadtest;" 2>/dev/null || true
+run_psql -c "CREATE DATABASE loadtest;"
 
 # Create extension
 echo "🔧 Installing jsonb_ivm extension..."
-psql -U postgres -d loadtest -c "CREATE EXTENSION jsonb_ivm;"
+run_psql -d loadtest -c "CREATE EXTENSION jsonb_ivm;"
 
 # Prepare test data
 echo "📊 Preparing test data..."
-psql -U postgres -d loadtest <<EOF
+run_psql -d loadtest <<EOF
 CREATE TABLE test_jsonb (
     id SERIAL PRIMARY KEY,
     data JSONB
@@ -71,18 +87,38 @@ echo "✅ Test data prepared (1000 rows)"
 echo ""
 echo "🔄 Running concurrent merge test (100 clients, 10 seconds)..."
 echo "----------------------------------------------------------"
-if ! pgbench -U postgres -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_merge.sql; then
-    echo "❌ Load test failed!"
-    exit 1
+
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    # CI: Run pgbench as postgres user via sudo
+    if ! sudo -u postgres pgbench -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_merge.sql; then
+        echo "❌ Load test failed!"
+        exit 1
+    fi
+else
+    # Local: Run pgbench normally
+    if ! pgbench -U postgres -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_merge.sql; then
+        echo "❌ Load test failed!"
+        exit 1
+    fi
 fi
 
 # Run concurrent array operations
 echo ""
 echo "🔄 Running concurrent array update test (100 clients, 10 seconds)..."
 echo "-------------------------------------------------------------------"
-if ! pgbench -U postgres -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_array.sql; then
-    echo "❌ Load test failed!"
-    exit 1
+
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    # CI: Run pgbench as postgres user via sudo
+    if ! sudo -u postgres pgbench -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_array.sql; then
+        echo "❌ Load test failed!"
+        exit 1
+    fi
+else
+    # Local: Run pgbench normally
+    if ! pgbench -U postgres -d loadtest -c 100 -j 10 -T 10 -f test/load/load_test_concurrent_array.sql; then
+        echo "❌ Load test failed!"
+        exit 1
+    fi
 fi
 
 # Verify data integrity
@@ -91,14 +127,14 @@ echo "🔍 Verifying data integrity..."
 echo "------------------------------"
 
 # Check that all records still exist
-ROW_COUNT=$(psql -U postgres -d loadtest -t -c "SELECT COUNT(*) FROM test_jsonb;" | tr -d ' ')
+ROW_COUNT=$(run_psql -d loadtest -t -c "SELECT COUNT(*) FROM test_jsonb;" | tr -d ' ')
 if [ "$ROW_COUNT" -ne 1000 ]; then
     echo "❌ Data integrity check failed! Expected 1000 rows, got $ROW_COUNT"
     exit 1
 fi
 
 # Check that data is valid JSONB
-INVALID_COUNT=$(psql -U postgres -d loadtest -t -c "SELECT COUNT(*) FROM test_jsonb WHERE data IS NULL OR jsonb_typeof(data) != 'object';" | tr -d ' ')
+INVALID_COUNT=$(run_psql -d loadtest -t -c "SELECT COUNT(*) FROM test_jsonb WHERE data IS NULL OR jsonb_typeof(data) != 'object';" | tr -d ' ')
 if [ "$INVALID_COUNT" -ne 0 ]; then
     echo "❌ Data integrity check failed! Found $INVALID_COUNT invalid JSONB records"
     exit 1
@@ -107,7 +143,7 @@ fi
 # Cleanup
 echo ""
 echo "🧹 Cleaning up..."
-psql -U postgres -c "DROP DATABASE loadtest;"
+run_psql -c "DROP DATABASE loadtest;"
 
 echo ""
 echo "✅ Load tests completed successfully!"

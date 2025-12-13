@@ -266,6 +266,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install PostgreSQL 17
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-17 postgresql-server-dev-17
+
+      - name: Install cargo-pgrx
+        run: cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+
       - name: Run property tests
         run: |
           ./scripts/run_property_tests.sh 10000
@@ -305,18 +319,13 @@ jobs:
           sudo pg_ctlcluster 17 main stop 2>/dev/null || true
           sudo pg_dropcluster 17 main --stop 2>/dev/null || true
 
-          # Create cluster with explicit port
-          sudo pg_createcluster -p 5432 17 main
+          # Create cluster with explicit port and start it
+          sudo pg_createcluster -p 5432 17 main --start
 
-          # Configure PostgreSQL to listen on TCP
-          sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/17/main/postgresql.conf
-          sudo sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/17/main/postgresql.conf
+          # Wait for initial startup
+          sleep 3
 
-          # Start the cluster
-          sudo pg_ctlcluster 17 main start
-
-          # Verify it started
-          sleep 2
+          # Verify cluster is running
           sudo pg_lsclusters
 
       - name: Debug PostgreSQL Setup
@@ -338,89 +347,27 @@ jobs:
 
       - name: Configure PostgreSQL
         run: |
-          echo "=== Current Cluster Status ==="
-          sudo pg_lsclusters
+          echo "=== Configuring trust authentication for CI ==="_
 
-          # Wait for cluster to be fully ready
-          echo ""
-          echo "=== Waiting for cluster to accept connections ==="
-          sleep 3
-
-          # Configure trust authentication for local connections (CI only)
-          echo "=== Configuring pg_hba.conf ==="
-          sudo cp /etc/postgresql/17/main/pg_hba.conf /etc/postgresql/17/main/pg_hba.conf.backup
+          # Configure trust authentication for local connections (CI only - safe for ephemeral environments)
           sudo sed -i 's/^local.*all.*postgres.*peer/local all postgres trust/' /etc/postgresql/17/main/pg_hba.conf
           sudo sed -i 's/^local.*all.*all.*peer/local all all trust/' /etc/postgresql/17/main/pg_hba.conf
           sudo sed -i 's/^host.*all.*all.*127.0.0.1.*scram-sha-256/host all all 127.0.0.1\/32 trust/' /etc/postgresql/17/main/pg_hba.conf
           sudo sed -i 's/^host.*all.*all.*::1.*scram-sha-256/host all all ::1\/128 trust/' /etc/postgresql/17/main/pg_hba.conf
 
-          echo "=== pg_hba.conf changes ==="
-          diff /etc/postgresql/17/main/pg_hba.conf.backup /etc/postgresql/17/main/pg_hba.conf || true
-
           # Reload PostgreSQL to apply changes
-          echo ""
-          echo "=== Reloading PostgreSQL ==="
           sudo pg_ctlcluster 17 main reload
 
-          # Wait for reload to complete
+          # Wait for reload
           sleep 2
 
-          # Check if PostgreSQL is ready with multiple connection attempts
+          # Verify PostgreSQL is accepting connections
           echo ""
-          echo "=== Testing PostgreSQL Connectivity ==="
+          echo "=== Verifying PostgreSQL Connectivity ==="
 
-          # Try Unix socket first
-          if psql -U postgres -c "SELECT version();" 2>/dev/null; then
-            echo "✅ Unix socket connection successful"
-          else
-            echo "⚠️  Unix socket connection failed"
-          fi
-
-          # Try TCP connection
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U postgres 2>/dev/null; then
-              echo "✅ TCP connection successful on attempt $i"
-              psql -h localhost -p 5432 -U postgres -c "SELECT version();"
-              echo ""
-              echo "✅ PostgreSQL is ready and accepting connections"
-              exit 0
-            fi
-
-            if [ $i -eq 1 ] || [ $((i % 5)) -eq 0 ]; then
-              echo "⏳ Waiting for PostgreSQL TCP... ($i/30)"
-            fi
-            sleep 1
-          done
-
-          # If we get here, PostgreSQL didn't start properly
-          echo ""
-          echo "❌ PostgreSQL failed to accept TCP connections within 30 seconds"
-          echo ""
-          echo "=== Final Cluster Status ==="
-          sudo pg_lsclusters
-
-          echo ""
-          echo "=== PostgreSQL Processes ==="
-          ps aux | grep postgres | grep -v grep || echo "No postgres processes"
-
-          echo ""
-          echo "=== Port 5432 Status ==="
-          sudo lsof -i :5432 || echo "Port 5432 not in use"
-
-          echo ""
-          echo "=== PostgreSQL Configuration ==="
-          grep "^listen_addresses" /etc/postgresql/17/main/postgresql.conf || echo "listen_addresses not set"
-          grep "^port" /etc/postgresql/17/main/postgresql.conf || echo "port not explicitly set"
-
-          echo ""
-          echo "=== PostgreSQL Logs (last 50 lines) ==="
-          sudo tail -50 /var/log/postgresql/postgresql-17-main.log 2>/dev/null || echo "No log file found"
-
-          echo ""
-          echo "=== Systemctl Status ==="
-          sudo systemctl status postgresql@17-main --no-pager || true
-
-          exit 1
+          # Use sudo -u postgres for Unix socket connection (always works)
+          sudo -u postgres psql -c "SELECT version();"
+          echo "✅ PostgreSQL is ready and accepting connections"
 
       - name: Install cargo-pgrx
         run: cargo install --locked cargo-pgrx --version 0.16.1
