@@ -7,7 +7,7 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:1096
+-- src/lib.rs:174
 -- jsonb_ivm::jsonb_array_contains_id
 CREATE  FUNCTION "jsonb_array_contains_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
@@ -21,8 +21,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_contains_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:676
--- jsonb_ivm::jsonb_array_delete_where
+-- src/array_ops.rs:320
+-- jsonb_ivm::array_ops::jsonb_array_delete_where
 CREATE  FUNCTION "jsonb_array_delete_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"array_path" TEXT, /* &str */
@@ -35,8 +35,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_delete_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:765
--- jsonb_ivm::jsonb_array_insert_where
+-- src/array_ops.rs:410
+-- jsonb_ivm::array_ops::jsonb_array_insert_where
 CREATE  FUNCTION "jsonb_array_insert_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"array_path" TEXT, /* &str */
@@ -50,8 +50,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_insert_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:361
--- jsonb_ivm::jsonb_array_update_multi_row
+-- src/array_ops.rs:234
+-- jsonb_ivm::array_ops::jsonb_array_update_multi_row
 CREATE  FUNCTION "jsonb_array_update_multi_row"(
 	"targets" jsonb[], /* pgrx::datum::array::Array<'_, pgrx::datum::json::JsonB> */
 	"array_path" TEXT, /* &str */
@@ -67,8 +67,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_multi_row_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:178
--- jsonb_ivm::jsonb_array_update_where
+-- src/array_ops.rs:48
+-- jsonb_ivm::array_ops::jsonb_array_update_where
 CREATE  FUNCTION "jsonb_array_update_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"array_path" TEXT, /* &str */
@@ -82,8 +82,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:255
--- jsonb_ivm::jsonb_array_update_where_batch
+-- src/array_ops.rs:128
+-- jsonb_ivm::array_ops::jsonb_array_update_where_batch
 CREATE  FUNCTION "jsonb_array_update_where_batch"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"array_path" TEXT, /* &str */
@@ -96,8 +96,8 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_where_batch_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:927
--- jsonb_ivm::jsonb_deep_merge
+-- src/merge.rs:384
+-- jsonb_ivm::merge::jsonb_deep_merge
 CREATE  FUNCTION "jsonb_deep_merge"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"source" jsonb /* pgrx::datum::json::JsonB */
@@ -108,7 +108,7 @@ AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:1019
+-- src/lib.rs:97
 -- jsonb_ivm::jsonb_extract_id
 CREATE  FUNCTION "jsonb_extract_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
@@ -120,8 +120,37 @@ AS 'MODULE_PATHNAME', 'jsonb_extract_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:417
--- jsonb_ivm::jsonb_merge_at_path
+-- src/lib.rs:229
+-- jsonb_ivm::jsonb_ivm_array_update_where_path
+CREATE  FUNCTION "jsonb_ivm_array_update_where_path"(
+	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"array_key" TEXT, /* &str */
+	"match_key" TEXT, /* &str */
+	"match_value" jsonb, /* pgrx::datum::json::JsonB */
+	"update_path" TEXT, /* &str */
+	"update_value" jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* pgrx::datum::json::JsonB */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'jsonb_ivm_array_update_where_path_wrapper';
+/* </end connected objects> */
+
+/* <begin connected objects> */
+-- src/lib.rs:339
+-- jsonb_ivm::jsonb_ivm_set_path
+CREATE  FUNCTION "jsonb_ivm_set_path"(
+	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"path" TEXT, /* &str */
+	"value" jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* pgrx::datum::json::JsonB */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'jsonb_ivm_set_path_wrapper';
+/* </end connected objects> */
+
+/* <begin connected objects> */
+-- src/merge.rs:99
+-- jsonb_ivm::merge::jsonb_merge_at_path
 CREATE  FUNCTION "jsonb_merge_at_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"source" jsonb, /* pgrx::datum::json::JsonB */
@@ -133,8 +162,8 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_at_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:109
--- jsonb_ivm::jsonb_merge_shallow
+-- src/merge.rs:37
+-- jsonb_ivm::merge::jsonb_merge_shallow
 CREATE  FUNCTION "jsonb_merge_shallow"(
 	"target" jsonb, /* core::option::Option<pgrx::datum::json::JsonB> */
 	"source" jsonb /* core::option::Option<pgrx::datum::json::JsonB> */
@@ -145,8 +174,8 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_shallow_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:614
--- jsonb_ivm::jsonb_smart_patch_array
+-- src/merge.rs:302
+-- jsonb_ivm::merge::jsonb_smart_patch_array
 CREATE  FUNCTION "jsonb_smart_patch_array"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"source" jsonb, /* pgrx::datum::json::JsonB */
@@ -160,8 +189,8 @@ AS 'MODULE_PATHNAME', 'jsonb_smart_patch_array_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:568
--- jsonb_ivm::jsonb_smart_patch_nested
+-- src/merge.rs:255
+-- jsonb_ivm::merge::jsonb_smart_patch_nested
 CREATE  FUNCTION "jsonb_smart_patch_nested"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"source" jsonb, /* pgrx::datum::json::JsonB */
@@ -173,8 +202,8 @@ AS 'MODULE_PATHNAME', 'jsonb_smart_patch_nested_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:531
--- jsonb_ivm::jsonb_smart_patch_scalar
+-- src/merge.rs:217
+-- jsonb_ivm::merge::jsonb_smart_patch_scalar
 CREATE  FUNCTION "jsonb_smart_patch_scalar"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
 	"source" jsonb /* pgrx::datum::json::JsonB */
