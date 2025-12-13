@@ -266,6 +266,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install PostgreSQL 17
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-17 postgresql-server-dev-17
+
+      - name: Install cargo-pgrx
+        run: cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+
       - name: Run property tests
         run: |
           ./scripts/run_property_tests.sh 10000
@@ -301,9 +315,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-17 postgresql-server-dev-17
 
-          # Create and start cluster
-          sudo pg_createcluster 17 main --start || true
-          sudo pg_ctlcluster 17 main start || true
+          # Stop default cluster if it exists and recreate
+          sudo pg_ctlcluster 17 main stop || true
+          sudo pg_dropcluster --stop 17 main || true
+          sudo pg_createcluster 17 main --start
+
+          # Verify cluster is running
+          sudo pg_lsclusters
+
+      - name: Configure PostgreSQL
+        run: |
+          # Configure trust authentication for local connections (CI only)
+          sudo sed -i 's/^local.*all.*postgres.*peer/local all postgres trust/' /etc/postgresql/17/main/pg_hba.conf
+          sudo sed -i 's/^host.*all.*all.*127.0.0.1.*scram-sha-256/host all all 127.0.0.1\/32 trust/' /etc/postgresql/17/main/pg_hba.conf
+
+          # Reload PostgreSQL to apply changes
+          sudo pg_ctlcluster 17 main reload
+
+          # Wait for PostgreSQL to be ready
+          timeout 30 bash -c 'until pg_isready -h localhost -p 5432 -U postgres -q; do sleep 1; done'
+
+          echo "✅ PostgreSQL is ready and accepting connections"
 
       - name: Install cargo-pgrx
         run: cargo install --locked cargo-pgrx --version 0.16.1
@@ -318,5 +350,9 @@ jobs:
         run: cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release --sudo
 
       - name: Run load tests
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
         run: |
           ./scripts/run_load_tests.sh
