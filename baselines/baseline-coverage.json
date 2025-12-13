@@ -1,0 +1,156 @@
+[2m2025-12-13T09:07:07.888732Z[0m [32m INFO[0m [2mcargo_tarpaulin::config[0m[2m:[0m Creating config
+[2m2025-12-13T09:07:07.955644Z[0m [32m INFO[0m [2mcargo_tarpaulin[0m[2m:[0m Running Tarpaulin
+[2m2025-12-13T09:07:07.955660Z[0m [32m INFO[0m [2mcargo_tarpaulin[0m[2m:[0m Building project
+[2m2025-12-13T09:07:07.955730Z[0m [32m INFO[0m [2mcargo_tarpaulin::cargo[0m[2m:[0m Cleaning project
+[2m2025-12-13T09:07:07.969713Z[0m [31mERROR[0m [2mcargo_tarpaulin::cargo[0m[2m:[0m Cargo clean failed: Permission denied (os error 13)
+[2m2025-12-13T09:07:57.425933Z[0m [31mERROR[0m [2mcargo_tarpaulin[0m[2m:[0m Failed to compile tests!
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-m64" "/tmp/rustc85XiTi/symbols.o" "<112 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libtest-*,libgetopts-*}.rlib" "/home/lionel/code/jsonb_ivm/target/debug/deps/{libpgrx-1d0ad657cb8ec436,libseahash-72330414f07f264c,libserde_cbor-53400319ab1fb990,libhalf-90158aa5d322cbdf,libserde_json-f2a8df596bf679ca,libmemchr-3658b81d80dc44d9,libitoa-bfab89242a524204,libryu-5d9f641a353fe442,libenum_map-a8756971900ed81d,libpgrx_pg_sys-178f83ac8f8bf5f6,libserde-7fdc51a6f303bef7,libserde_core-a2e7907b41077871,libcee_scape-8e8650f289cdca1c,liblibc-b91d44b4cc934e69,libbitvec-beb6357706d6be0f,libwyz-07fb85b8f052d64c,libtap-3621db8f7f6ec181,libradium-c1866911907cd44e,libfunty-1bd079fb86a0f3bc,libpgrx_sql_entity_graph-4dc62334a82c3dcf,libunescape-3c71ca5a35e022dd,libpetgraph-bc8a9e13979b1f71,libhashbrown-da0709ec6c9ba886,libfoldhash-1a175e17550ba98e,libindexmap-f05568dbe983c509,libequivalent-55e4e28f3df4d916,libhashbrown-e1867ee67afae862,libfixedbitset-3fc4fe34ac1b09c3,libthiserror-a7e0152706c401b4,libconvert_case-a54fb3c65545c67f,libunicode_segmentation-1995af9965b03ed8,libeyre-3a22128daf0d09ab,libindenter-51279318c810472d,libonce_cell-273b23370b906988,libsyn-79e5d89742111b00,libquote-0120eaa443f5b683,libproc_macro2-ba7e21fcc1be3f0c,libunicode_ident-d202b3ba2de2274a}.rlib" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libproc_macro-*,librustc_literal_escaper-*,librustc_std_workspace_std-*}.rlib" "/home/lionel/code/jsonb_ivm/target/debug/deps/libbitflags-fd3982bbf90056d6.rlib" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-lresolv" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/tmp/rustc85XiTi/raw-dylibs" "-B<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/bin/gcc-ld" "-fuse-ld=lld" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "/home/lionel/code/jsonb_ivm/target/debug/build/pgrx-pg-sys-ed2606d8a0b9631b/out" "-L" "/home/lionel/code/jsonb_ivm/target/debug/build/cee-scape-6e32b18d7fcb70ab/out" "-L" "/usr/lib" "-L" "<sysroot>/lib/rustlib/x86_64-unknown-linux-gnu/lib" "-o" "/home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f" "-pie" "-Wl,-z,relro,-z,now" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: rust-lld: error: undefined symbol: CurrentMemoryContext
+          >>> referenced by memcxt.rs:588 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-0.16.1/src/memcxt.rs:588)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.5i68idlgw1009etvbwvtj8lqr.1kgq8fs.rcgu.o:(pgrx::memcxt::PgMemoryContexts::exec_in_context::h0eae66de6d9a16ed)
+          >>> referenced by memcxt.rs:588 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-0.16.1/src/memcxt.rs:588)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.5i68idlgw1009etvbwvtj8lqr.1kgq8fs.rcgu.o:(pgrx::memcxt::PgMemoryContexts::exec_in_context::h0eae66de6d9a16ed)
+          >>> referenced by memcxt.rs:589 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-0.16.1/src/memcxt.rs:589)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.5i68idlgw1009etvbwvtj8lqr.1kgq8fs.rcgu.o:(pgrx::memcxt::PgMemoryContexts::exec_in_context::h0eae66de6d9a16ed)
+          >>> referenced 50521 more times
+
+          rust-lld: error: undefined symbol: ErrorContext
+          >>> referenced by panic.rs:402 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:402)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h1d74c345091440a0)
+          >>> referenced by panic.rs:402 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:402)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h1d74c345091440a0)
+          >>> referenced by panic.rs:402 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:402)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h307355eebe15700a)
+          >>> referenced 33 more times
+
+          rust-lld: error: undefined symbol: pg_re_throw
+          >>> referenced by panic.rs:403 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:403)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h1d74c345091440a0)
+          >>> referenced by panic.rs:403 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:403)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h307355eebe15700a)
+          >>> referenced by panic.rs:403 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/panic.rs:403)
+          >>>               /home/lionel/code/jsonb_ivm/target/debug/deps/jsonb_ivm-21a2aec71cd2df5f.es4hoi9otx5wt8hzrewxbx5i2.1kgq8fs.rcgu.o:(pgrx_pg_sys::submodules::panic::pgrx_extern_c_guard::h49225a5fb1447228)
+          >>> referenced 13 more times
+
+          rust-lld: error: undefined symbol: PG_exception_stack
+          >>> referenced by ffi.rs:171 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:171)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by ffi.rs:188 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:188)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by ffi.rs:247 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:247)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced 91935 more times
+
+          rust-lld: error: undefined symbol: error_context_stack
+          >>> referenced by ffi.rs:172 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:172)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by ffi.rs:189 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:189)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by ffi.rs:248 (/home/lionel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pgrx-pg-sys-0.16.1/src/submodules/ffi.rs:248)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.05.rcgu.o:(pgrx_pg_sys::submodules::ffi::pg_guard_ffi_boundary::h4dd1c6d7e9231d9e) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced 75219 more times
+
+          rust-lld: error: undefined symbol: SPI_tuptable
+          >>> referenced by query.rs:74 (src/spi/query.rs:74)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::spi::query::execute::hb6bc00dd2ba60732) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by query.rs:74 (src/spi/query.rs:74)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::spi::query::execute::hb6bc00dd2ba60732) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by query.rs:341 (src/spi/query.rs:341)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(_$LT$$RF$pgrx..spi..query..PreparedStatement$u20$as$u20$pgrx..spi..query..Query$GT$::execute::h65ad97febc84f7c6) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced 8 more times
+
+          rust-lld: error: undefined symbol: SPI_result
+          >>> referenced by query.rs:167 (src/spi/query.rs:167)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::spi::query::prepare::_$u7b$$u7b$closure$u7d$$u7d$::hd3e3e1a224394f25) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by query.rs:167 (src/spi/query.rs:167)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::spi::query::prepare::_$u7b$$u7b$closure$u7d$$u7d$::hd3e3e1a224394f25) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: TopMemoryContext
+          >>> referenced by memcxt.rs:251 (src/memcxt.rs:251)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:251 (src/memcxt.rs:251)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: PortalContext
+          >>> referenced by memcxt.rs:252 (src/memcxt.rs:252)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:252 (src/memcxt.rs:252)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: PostmasterContext
+          >>> referenced by memcxt.rs:254 (src/memcxt.rs:254)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:254 (src/memcxt.rs:254)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: CacheMemoryContext
+          >>> referenced by memcxt.rs:255 (src/memcxt.rs:255)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:255 (src/memcxt.rs:255)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: MessageContext
+          >>> referenced by memcxt.rs:256 (src/memcxt.rs:256)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:256 (src/memcxt.rs:256)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: TopTransactionContext
+          >>> referenced by memcxt.rs:257 (src/memcxt.rs:257)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:257 (src/memcxt.rs:257)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: CurTransactionContext
+          >>> referenced by memcxt.rs:258 (src/memcxt.rs:258)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by memcxt.rs:258 (src/memcxt.rs:258)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.07.rcgu.o:(pgrx::memcxt::PgMemoryContexts::value::heb6de9a3aed08727) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: InterruptHoldoffCount
+          >>> referenced by lwlock.rs:182 (src/lwlock.rs:182)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.13.rcgu.o:(pgrx::lwlock::release_unless_elog_unwinding::h73b014b7fcc19fcc) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+          >>> referenced by lwlock.rs:182 (src/lwlock.rs:182)
+          >>>               pgrx-1d0ad657cb8ec436.pgrx.ff2a1d40f94969c7-cgu.13.rcgu.o:(pgrx::lwlock::release_unless_elog_unwinding::h73b014b7fcc19fcc) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx-1d0ad657cb8ec436.rlib
+
+          rust-lld: error: undefined symbol: palloc0
+          >>> referenced by nodes.h:155 (/usr/include/postgresql/server/nodes/nodes.h:155)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(newNode) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by pg18.rs:34900 (/home/lionel/code/jsonb_ivm/target/debug/build/pgrx-pg-sys-ed2606d8a0b9631b/out/pg18.rs:34900)
+          >>>               pgrx_pg_sys-178f83ac8f8bf5f6.pgrx_pg_sys.8acb185f990773b1-cgu.02.rcgu.o:(pgrx_pg_sys::include::pg18::palloc0::_$u7b$$u7b$closure$u7d$$u7d$::h25d10a51e617c6ca) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+
+          rust-lld: error: undefined symbol: ReadNextFullTransactionId
+          >>> referenced by transam.h:317 (/usr/include/postgresql/server/access/transam.h:317)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(ReadNextTransactionId) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by pg18.rs:34900 (/home/lionel/code/jsonb_ivm/target/debug/build/pgrx-pg-sys-ed2606d8a0b9631b/out/pg18.rs:34900)
+          >>>               pgrx_pg_sys-178f83ac8f8bf5f6.pgrx_pg_sys.8acb185f990773b1-cgu.02.rcgu.o:(pgrx_pg_sys::include::pg18::ReadNextFullTransactionId::_$u7b$$u7b$closure$u7d$$u7d$::hd0b1d168d21a7113) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+
+          rust-lld: error: undefined symbol: TransactionIdPrecedes
+          >>> referenced by transam.h:342 (/usr/include/postgresql/server/access/transam.h:342)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(TransactionIdOlder) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by pg18.rs:34900 (/home/lionel/code/jsonb_ivm/target/debug/build/pgrx-pg-sys-ed2606d8a0b9631b/out/pg18.rs:34900)
+          >>>               pgrx_pg_sys-178f83ac8f8bf5f6.pgrx_pg_sys.8acb185f990773b1-cgu.02.rcgu.o:(pgrx_pg_sys::include::pg18::TransactionIdPrecedes::_$u7b$$u7b$closure$u7d$$u7d$::hc6346c7c176a2e30) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+
+          rust-lld: error: undefined symbol: errstart_cold
+          >>> referenced by tupmacs.h:70 (/usr/include/postgresql/server/access/tupmacs.h:70)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(fetch_att) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by tupmacs.h:230 (/usr/include/postgresql/server/access/tupmacs.h:230)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(store_att_byval) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by tableam.h:1034 (/usr/include/postgresql/server/access/tableam.h:1034)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(table_scan_getnextslot) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced 7 more times
+
+          rust-lld: error: undefined symbol: errmsg_internal
+          >>> referenced by tupmacs.h:70 (/usr/include/postgresql/server/access/tupmacs.h:70)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(fetch_att) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by tupmacs.h:230 (/usr/include/postgresql/server/access/tupmacs.h:230)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(store_att_byval) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced by tableam.h:1034 (/usr/include/postgresql/server/access/tableam.h:1034)
+          >>>               a323d5280aa240bc-pgrx-cshim.o:(table_scan_getnextslot) in archive /home/lionel/code/jsonb_ivm/target/debug/deps/libpgrx_pg_sys-178f83ac8f8bf5f6.rlib
+          >>> referenced 6 more times
+
+          rust-lld: error: too many errors emitted, stopping now (use --error-limit=0 to see all errors)
+          collect2: error: ld returned 1 exit status

@@ -1,0 +1,148 @@
+CREATE EXTENSION
+=========================================
+Performance Comparison Benchmark
+jsonb_merge_shallow vs. native || operator
+=========================================
+
+Timing is on.
+=== Benchmark 1: Small objects (10 keys, 10,000 merges) ===
+
+--- jsonb_merge_shallow (extension) ---
+ count
+-------
+ 10000
+(1 row)
+
+Time: 2.307 ms
+--- || operator (native) ---
+ count
+-------
+ 10000
+(1 row)
+
+Time: 1.438 ms
+
+=== Benchmark 2: Medium objects (50 keys, 1,000 merges) ===
+
+DROP TABLE
+Time: 0.056 ms
+DROP TABLE
+Time: 0.012 ms
+SELECT 1
+Time: 5.374 ms
+SELECT 1
+Time: 0.548 ms
+--- jsonb_merge_shallow (extension) ---
+ count
+-------
+  1000
+(1 row)
+
+Time: 30.421 ms
+--- || operator (native) ---
+ count
+-------
+  1000
+(1 row)
+
+Time: 4.639 ms
+
+=== Benchmark 3: Large objects (150 keys, 100 merges) ===
+
+DROP TABLE
+Time: 0.047 ms
+DROP TABLE
+Time: 0.013 ms
+SELECT 1
+Time: 1.087 ms
+SELECT 1
+Time: 1.372 ms
+--- jsonb_merge_shallow (extension) ---
+ count
+-------
+   100
+(1 row)
+
+Time: 6.362 ms
+--- || operator (native) ---
+ count
+-------
+   100
+(1 row)
+
+Time: 4.384 ms
+
+=== Benchmark 4: Overlapping keys - CQRS update scenario (5,000 updates) ===
+
+Scenario: Updating customer info in denormalized order view
+Target: Order with 20 fields, Source: 5 customer fields (3 overlap)
+
+DROP TABLE
+Time: 0.036 ms
+DROP TABLE
+Time: 0.035 ms
+SELECT 100
+Time: 2.798 ms
+SELECT 100
+Time: 0.761 ms
+--- jsonb_merge_shallow (extension) ---
+ count
+--------
+ 500000
+(1 row)
+
+Time: 11.760 ms
+--- || operator (native) ---
+ count
+--------
+ 500000
+(1 row)
+
+Time: 11.970 ms
+
+=== Type Safety Comparison ===
+
+Test: Merging array with object (should error in extension, allow in native)
+
+--- jsonb_merge_shallow (extension - should ERROR) ---
+Time: 0.666 ms
+
+--- || operator (native - allows array concat) ---
+      ?column?
+---------------------
+ [1, 2, 3, {"a": 1}]
+(1 row)
+
+Time: 0.034 ms
+
+Timing is off.
+
+=========================================
+Benchmark Summary
+=========================================
+
+Expected Performance Difference:
+  - Extension typically 20-40% slower than native || operator
+  - Slowdown is due to manual HashMap cloning in Rust implementation
+
+Extension Advantages:
+  ✅ Type safety: Errors on non-object merges (prevents bugs)
+  ✅ Clear error messages: Shows actual type received
+  ✅ Explicit function name: More readable than || operator
+  ✅ Future features: jsonb_merge_at_path for nested merging
+
+Native || Advantages:
+  ✅ Performance: Faster (native C implementation)
+  ✅ Flexibility: Allows array concatenation, mixed types
+  ✅ Built-in: No extension dependency
+
+Recommendation:
+  - Use extension for CQRS materialized view updates (type-safe, readable)
+  - Use native || for performance-critical general JSONB manipulation
+
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE
+DROP TABLE

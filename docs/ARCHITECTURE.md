@@ -4,6 +4,70 @@
 
 `jsonb_ivm` is a PostgreSQL extension written in Rust using the [pgrx](https://github.com/pgcentralfoundation/pgrx) framework. It provides high-performance incremental update operations for JSONB documents, optimized for CQRS (Command Query Responsibility Segregation) architectures.
 
+## Module Structure (Phase 0: Modularization)
+
+The codebase is organized into focused modules for maintainability and parallel development:
+
+### `src/lib.rs` (200 lines)
+
+Core entry point with pgrx integration:
+
+- Module declarations and re-exports
+- pgrx FFI magic and test setup
+- Utility functions: `jsonb_extract_id`, `jsonb_array_contains_id`
+
+### `src/search.rs` (200 lines)
+
+Optimized search algorithms:
+
+- `find_by_int_id_optimized()`: SIMD-friendly integer ID matching with loop unrolling
+- `find_by_int_id_scalar()`: Fallback for small arrays
+- Performance: ~100ns/element for integer lookups
+
+### `src/merge.rs` (400 lines)
+
+JSONB merge operations:
+
+- `jsonb_merge_shallow()`: Top-level key merging
+- `jsonb_merge_at_path()`: Nested path merging
+- `jsonb_smart_patch_*()`: CQRS-optimized merge variants
+- `jsonb_deep_merge()`: Recursive object merging
+
+### `src/array_ops.rs` (300 lines)
+
+Array manipulation functions:
+
+- `jsonb_array_update_where()`: Single element updates
+- `jsonb_array_update_where_batch()`: Multiple updates in one pass
+- `jsonb_array_update_multi_row()`: Cross-document batch updates
+- `jsonb_array_delete_where()`: Surgical element removal
+- `jsonb_array_insert_where()`: Ordered insertion with sorting
+
+### `src/depth.rs` (100 lines)
+
+Security validation:
+
+- `validate_depth()`: Prevents DoS via deeply nested JSONB
+- `MAX_JSONB_DEPTH = 1000`: Configurable nesting limit
+- `get_max_depth()`: Analysis utility for testing
+
+### Module Dependencies
+
+```text
+lib.rs (re-exports)
+├── search.rs (no deps)
+├── merge.rs (uses search)
+├── array_ops.rs (uses search)
+└── depth.rs (no deps)
+```
+
+### Benefits of Modularization
+
+- **Parallel development**: Teams can work on different modules simultaneously
+- **Focused testing**: Each module has clear responsibilities
+- **Reduced compilation times**: Changes to one module don't rebuild everything
+- **Clear APIs**: Module boundaries define stable interfaces
+
 ## Design Principles
 
 ### 1. Zero-Copy Where Possible
