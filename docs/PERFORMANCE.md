@@ -338,5 +338,3 @@ Planned performance improvements:
 - [ ] JIT compilation support via pgrx 1.0
 - [ ] Parallel array processing for very large arrays (> 10,000 elements)
 - [ ] Custom memory allocator for reduced fragmentation
-
-See [roadmap](../ROADMAP.md) for details.

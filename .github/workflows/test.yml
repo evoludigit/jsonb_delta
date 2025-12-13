@@ -189,11 +189,12 @@ jobs:
           echo "✅ Schema generation validated"
 
       - name: Generate coverage report
-        if: matrix.pg-version == 17 && matrix.os == 'ubuntu-latest' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
         run: |
           cargo install cargo-tarpaulin
-          # Run tarpaulin, but don't fail if it has issues with pgrx
-          cargo tarpaulin --out Xml --output-dir ./coverage || {
+          # Run tarpaulin with correct pgrx flags
+          cargo tarpaulin --no-default-features --features pg17 \
+            --out Xml --output-dir ./coverage || {
             echo "⚠️  cargo-tarpaulin failed (common with pgrx extensions)"
             echo "Creating empty coverage file for workflow to continue"
             mkdir -p ./coverage
@@ -201,20 +202,22 @@ jobs:
           }
 
       - name: Upload to Codecov
-        if: matrix.pg-version == 17 && matrix.os == 'ubuntu-latest' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
-        uses: codecov/codecov-action@v3
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage/cobertura.xml
+          fail_ci_if_error: false  # Don't block on coverage issues
 
       - name: Check coverage threshold
-        if: matrix.pg-version == 17 && matrix.os == 'ubuntu-latest' && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
         continue-on-error: true  # Don't fail the build if coverage check fails
         run: |
           # Install jq for JSON parsing
           sudo apt-get update && sudo apt-get install -y jq
 
-          # Generate JSON coverage report
-          if cargo tarpaulin --out Json --output-dir ./coverage 2>/dev/null; then
+          # Generate JSON coverage report with correct flags
+          if cargo tarpaulin --no-default-features --features pg17 \
+               --out Json --output-dir ./coverage 2>/dev/null; then
             # Extract coverage percentage
             COVERAGE=$(jq -r '.coverage' ./coverage/coverage.json 2>/dev/null || echo "0")
 
