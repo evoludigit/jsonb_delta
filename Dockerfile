@@ -19,10 +19,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgrx
-RUN cargo install cargo-pgrx --locked
+RUN cargo install --locked cargo-pgrx --version 0.16.1
 
-# Set up pgrx (disable readline for container build)
-RUN PGRX_BUILD_FLAGS="--without-readline" cargo pgrx init --pg17 download
+# Set up pgrx for PostgreSQL 17
+RUN cargo pgrx init --pg17 download
 
 WORKDIR /build
 

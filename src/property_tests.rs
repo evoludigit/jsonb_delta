@@ -13,7 +13,7 @@ mod property_tests {
 
     impl Arbitrary for ArbJsonB {
         fn arbitrary(g: &mut Gen) -> Self {
-            ArbJsonB(arbitrary_value(g, 0))
+            Self(arbitrary_value(g, 0))
         }
     }
 
@@ -72,6 +72,7 @@ mod property_tests {
     }
 
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn prop_depth_validation_accepts_shallow_jsonb(val: ArbJsonB) -> bool {
         // Ensure shallow structures are accepted
         crate::validate_depth(&val.0, crate::MAX_JSONB_DEPTH).is_ok()
@@ -79,6 +80,7 @@ mod property_tests {
 
     // Property test for path operations (Phase 3 integration)
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)]
     fn prop_path_navigation_consistent(val: ArbJsonB) -> TestResult {
         // Test that path navigation is consistent with direct access
         if let Some(obj) = val.0.as_object() {

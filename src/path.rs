@@ -6,7 +6,7 @@
 use serde_json::Value;
 
 /// Represents a single segment in a JSONB path
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PathSegment {
     /// Object key access (e.g., `.field`)
     Key(String),
@@ -21,6 +21,15 @@ pub enum PathSegment {
 /// - Array indexing: `a[0]` → access array element by index
 /// - Mixed paths: `orders[0].items[1].price` → combined access
 /// - Backward compatibility: Single keys `user` still work
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The path is empty
+/// - The path contains consecutive dots (e.g., `a..b`)
+/// - Array index is empty (e.g., `a[]`)
+/// - Array index is not a valid number
+/// - Unexpected closing bracket appears (e.g., `a]`)
 ///
 /// # Examples
 /// ```
@@ -76,7 +85,7 @@ pub fn parse_path(path: &str) -> Result<Vec<PathSegment>, String> {
 
                 let index = index_str
                     .parse::<usize>()
-                    .map_err(|_| format!("Invalid array index: {}", index_str))?;
+                    .map_err(|_| format!("Invalid array index: {index_str}"))?;
                 segments.push(PathSegment::Index(index));
             }
             ']' => {
@@ -122,6 +131,7 @@ pub fn parse_path(path: &str) -> Result<Vec<PathSegment>, String> {
 /// let invalid_path = parse_path("user.profile.age").unwrap();
 /// assert_eq!(navigate_path(&data, &invalid_path), None);
 /// ```
+#[must_use]
 pub fn navigate_path<'a>(json: &'a Value, path: &[PathSegment]) -> Option<&'a Value> {
     let mut current = json;
 
@@ -151,6 +161,14 @@ pub fn navigate_path<'a>(json: &'a Value, path: &[PathSegment]) -> Option<&'a Va
 ///
 /// This is a mutable version of navigation that can create intermediate objects/arrays
 /// as needed. Used internally by the path-based update functions.
+///
+/// # Errors
+///
+/// Returns an error if the path is empty.
+///
+/// # Panics
+///
+/// Panics if internal unwrap operations fail after successful type checks (should not happen in normal operation).
 ///
 /// # Examples
 /// ```
