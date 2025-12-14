@@ -1,5 +1,5 @@
 ci:
-  skip: [cargo-fmt, cargo-clippy]
+  skip: [cargo-fmt, cargo-clippy, cargo-audit, cargo-test-pre-push]
 
 repos:
   # Rust formatting and linting
