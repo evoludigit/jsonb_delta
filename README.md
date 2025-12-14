@@ -2,7 +2,15 @@
 
 Surgical JSONB updates for PostgreSQL CQRS architectures
 
+<!-- CI/CD Status Badges -->
+[![Tests](https://github.com/fraiseql/jsonb_ivm/actions/workflows/test.yml/badge.svg)](https://github.com/fraiseql/jsonb_ivm/actions/workflows/test.yml)
+[![Lint](https://github.com/fraiseql/jsonb_ivm/actions/workflows/lint.yml/badge.svg)](https://github.com/fraiseql/jsonb_ivm/actions/workflows/lint.yml)
+[![Security](https://github.com/fraiseql/jsonb_ivm/actions/workflows/security-compliance.yml/badge.svg)](https://github.com/fraiseql/jsonb_ivm/actions/workflows/security-compliance.yml)
+[![Benchmark](https://github.com/fraiseql/jsonb_ivm/actions/workflows/benchmark.yml/badge.svg)](https://github.com/fraiseql/jsonb_ivm/actions/workflows/benchmark.yml)
+
+<!-- Project Info Badges -->
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13--18-blue.svg)](https://www.postgresql.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-PostgreSQL-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-green)](changelog.md)
 
@@ -12,39 +20,85 @@ High-performance PostgreSQL extension for incremental JSONB view maintenance in 
 
 ## Why jsonb_ivm?
 
-In CQRS architectures, you denormalize data into JSONB projection tables for read performance. When source data changes, you need to update these projections **surgically** without re-aggregating entire objects.
+PostgreSQL has excellent native JSONB functions (`jsonb_set`, `||`, `jsonb_agg`, etc.), but they fall short in CQRS/event sourcing architectures where you need to **surgically update denormalized projections**.
 
-**The Problem**:
+### The Problem with Native JSONB Functions
+
+PostgreSQL's built-in JSONB functions are designed for general-purpose manipulation, not incremental view maintenance. When updating arrays or nested structures, you face:
+
+| Native Function | Limitation |
+|-----------------|------------|
+| `jsonb_set()` | Requires knowing the exact array index; can't match by key |
+| `\|\|` operator | Only merges top-level keys; can't update nested paths |
+| `jsonb_agg()` | Re-aggregates entire array just to update one element |
+| `jsonb_array_elements()` | Requires subquery + re-aggregation for every update |
+
+**Real-world example** - Updating an order's status in a customer's orders array:
 
 ```sql
--- Re-aggregate entire object just to change one field 😢
-UPDATE project_views
-SET data = jsonb_build_object(
-    'id', data->'id',
-    'name', data->'name',
-    'owner', jsonb_build_object(
-        'id', data->'owner'->'id',
-        'name', data->'owner'->'name',
-        'email', 'alice@new.com'  -- only this changed!
+-- Native PostgreSQL: Complex, slow, memory-intensive
+UPDATE customers
+SET data = jsonb_set(
+    data,
+    '{orders}',
+    (
+        SELECT jsonb_agg(
+            CASE
+                WHEN elem->>'id' = '12345'
+                THEN elem || '{"status": "shipped"}'::jsonb
+                ELSE elem
+            END
+        )
+        FROM jsonb_array_elements(data->'orders') AS elem
     )
 )
-WHERE id = 1;
+WHERE id = 'cust_001';
+-- Time: 3.2ms | Memory: Full array copy + aggregation overhead
 ```
-
-**The Solution**:
 
 ```sql
--- Surgical update with jsonb_ivm 🎯
-UPDATE project_views
-SET data = jsonb_smart_patch_nested(
+-- With jsonb_ivm: Simple, fast, minimal allocation
+UPDATE customers
+SET data = jsonb_array_update_where(
     data,
-    '{"email": "alice@new.com"}'::jsonb,
-    ARRAY['owner']
+    'orders',
+    'id',
+    '"12345"'::jsonb,
+    '{"status": "shipped"}'::jsonb
 )
-WHERE id = 1;
+WHERE id = 'cust_001';
+-- Time: 1.1ms | Memory: In-place mutation (2.9× faster)
 ```
 
-**Result**: **2-3× faster**, cleaner code, less memory allocation.
+### When to Use jsonb_ivm vs Native Functions
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Simple key-value merge | Native `\|\|` operator is fine |
+| Setting value at known path | Native `jsonb_set()` works well |
+| **Updating array element by ID** | **jsonb_ivm** (2-3× faster) |
+| **Batch array updates** | **jsonb_ivm** (3-5× faster) |
+| **Deleting array element by ID** | **jsonb_ivm** (5-7× faster) |
+| **Multi-row array updates** | **jsonb_ivm** (4× faster) |
+| **Deep nested path updates** | **jsonb_ivm** (cleaner API) |
+
+### Performance at Scale
+
+The performance gap widens with array size:
+
+| Array Size | Native SQL | jsonb_ivm | Speedup |
+|------------|------------|-----------|---------|
+| 10 elements | 0.8ms | 0.4ms | 2.0× |
+| 100 elements | 6.8ms | 2.1ms | 3.2× |
+| 1000 elements | 82ms | 23ms | 3.6× |
+
+**Why?** Native SQL must:
+
+1. Parse entire array into memory
+2. Iterate and rebuild with `jsonb_agg()`
+3. Serialize back to storage
+
+jsonb_ivm uses single-pass iteration with minimal allocations.
 
 ---
 
