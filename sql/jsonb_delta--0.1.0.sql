@@ -108,18 +108,6 @@ AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:97
--- jsonb_delta::jsonb_extract_id
-CREATE  FUNCTION "jsonb_extract_id"(
-	"data" jsonb, /* pgrx::datum::json::JsonB */
-	"key" TEXT DEFAULT 'id' /* &str */
-) RETURNS TEXT /* core::option::Option<alloc::string::String> */
-IMMUTABLE STRICT PARALLEL SAFE
-LANGUAGE c /* Rust */
-AS 'MODULE_PATHNAME', 'jsonb_extract_id_wrapper';
-/* </end connected objects> */
-
-/* <begin connected objects> */
 -- src/lib.rs:229
 -- jsonb_delta::jsonb_delta_array_update_where_path
 CREATE  FUNCTION "jsonb_delta_array_update_where_path"(
@@ -146,6 +134,18 @@ CREATE  FUNCTION "jsonb_delta_set_path"(
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_delta_set_path_wrapper';
+/* </end connected objects> */
+
+/* <begin connected objects> */
+-- src/lib.rs:97
+-- jsonb_delta::jsonb_extract_id
+CREATE  FUNCTION "jsonb_extract_id"(
+	"data" jsonb, /* pgrx::datum::json::JsonB */
+	"key" TEXT DEFAULT 'id' /* &str */
+) RETURNS TEXT /* core::option::Option<alloc::string::String> */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'jsonb_extract_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
@@ -212,3 +212,4 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_smart_patch_scalar_wrapper';
 /* </end connected objects> */
+
