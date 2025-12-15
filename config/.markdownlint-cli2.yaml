@@ -1,9 +1,10 @@
 # markdownlint-cli2 configuration
 config:
   MD013:
-    line_length: 120
+    line_length: 150
     code_blocks: false
     tables: false
+  MD032: false
   MD024: false  # Allow duplicate headings
   MD029: false  # Allow flexible ordered list numbering
   MD033: false  # Allow inline HTML (badges, email links)

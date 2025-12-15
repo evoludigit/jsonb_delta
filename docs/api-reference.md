@@ -467,7 +467,8 @@ jsonb_array_update_where(
 ) RETURNS jsonb
 ```
 
-**Performance**: O(n) where n = array length. 2-3× faster than native SQL re-aggregation. With SIMD optimization (v0.2.0), up to 6× faster for large arrays (1000+ elements).
+**Performance**: O(n) where n = array length. 2-3× faster than native SQL re-aggregation.
+With SIMD optimization (v0.2.0), up to 6× faster for large arrays (1000+ elements).
 
 **Example**:
 

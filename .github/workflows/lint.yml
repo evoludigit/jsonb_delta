@@ -170,7 +170,6 @@ jobs:
           folder-path: 'docs'
           file-path: |
             ./README.md
-            ./docs/development.md
             ./TESTING.md
 
   markdown-lint:

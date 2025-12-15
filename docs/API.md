@@ -106,7 +106,10 @@ SELECT jsonb_deep_merge(
 
 ### jsonb_array_update_where
 
-**Signature**: `jsonb_array_update_where(target jsonb, array_path text, match_key text, match_value jsonb, updates jsonb) → jsonb`
+**Signature**:
+```
+jsonb_array_update_where(target jsonb, array_path text, match_key text, match_value jsonb, updates jsonb) → jsonb
+```
 
 **Description**: Update a single element in a JSONB array by matching a key-value predicate.
 
@@ -166,7 +169,10 @@ SELECT jsonb_array_update_where_batch(
 
 ### jsonb_array_update_multi_row
 
-**Signature**: `jsonb_array_update_multi_row(targets jsonb[], array_path text, match_key text, match_value jsonb, updates jsonb) → TABLE (result jsonb)`
+**Signature**:
+```
+jsonb_array_update_multi_row(targets jsonb[], array_path text, match_key text, match_value jsonb, updates jsonb) → TABLE (result jsonb)
+```
 
 **Description**: Update arrays across multiple JSONB documents in one call.
 
@@ -209,6 +215,7 @@ SELECT * FROM jsonb_array_update_multi_row(
 **Use Case**: Update deeply nested fields in array elements (e.g., update a user's profile settings in a user array).
 
 **Syntax**:
+
 - Dot notation: `field.subfield` → navigate object properties
 - Array indexing: `field[0]` → access array elements
 - Combined: `orders[0].items[1].price` → complex nested navigation
@@ -238,6 +245,7 @@ SELECT jsonb_delta_array_update_where_path(
 ```
 
 **Limitations**:
+
 - Max path depth: 100 segments
 - No negative indices (use PostgreSQL's `jsonb_array_length`)
 - No wildcards (use PostgreSQL's `jsonb_path_query`)
@@ -250,13 +258,17 @@ SELECT jsonb_delta_array_update_where_path(
 
 ### jsonb_array_insert_where
 
-**Signature**: `jsonb_array_insert_where(target jsonb, array_path text, new_element jsonb, sort_key text, sort_order text) → jsonb`
+**Signature**:
+```
+jsonb_array_insert_where(target jsonb, array_path text, new_element jsonb, sort_key text, sort_order text) → jsonb
+```
 
 **Description**: Insert element into JSONB array with optional sorting. Maintains order during incremental updates.
 
 **Properties**: `IMMUTABLE PARALLEL SAFE`
 
 **Parameters**:
+
 - `sort_key`: Optional field to sort by (pass `NULL` to append)
 - `sort_order`: `'ASC'` or `'DESC'` (pass `NULL` for no sorting)
 
