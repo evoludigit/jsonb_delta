@@ -1,0 +1,6 @@
+[advisories]
+# Ignore warnings for unmaintained crates that are transitive dependencies from pgrx
+ignore = [
+    "RUSTSEC-2024-0436",  # paste - unmaintained (via pgrx-tests)
+    "RUSTSEC-2021-0127",  # serde_cbor - unmaintained (via pgrx)
+]

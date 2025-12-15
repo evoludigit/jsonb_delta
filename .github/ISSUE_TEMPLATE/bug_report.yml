@@ -1,0 +1,119 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in jsonb_ivm
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out this form as completely as possible.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      description: Please ensure you've completed these steps
+      options:
+        - label: I have searched existing issues and confirmed this is not a duplicate
+          required: true
+        - label: I have read the [troubleshooting guide](https://github.com/fraiseql/jsonb_ivm/blob/main/docs/troubleshooting.md)
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: What went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Provide SQL queries or steps to reproduce the issue
+      placeholder: |
+        1. CREATE TABLE ...
+        2. SELECT jsonb_merge_shallow(...)
+        3. See error...
+      render: sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages if applicable
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: jsonb_ivm Version
+      description: Run `SELECT extversion FROM pg_extension WHERE extname = 'jsonb_ivm';`
+      placeholder: "0.3.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: postgres-version
+    attributes:
+      label: PostgreSQL Version
+      description: Run `SELECT version();` to find your version
+      options:
+        - PostgreSQL 18
+        - PostgreSQL 17
+        - PostgreSQL 16
+        - PostgreSQL 15
+        - PostgreSQL 14
+        - PostgreSQL 13
+        - Other (please specify in additional context)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows (WSL)
+        - Docker/Container
+        - Other (please specify)
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: |
+        Any other context about the problem here.
+        - Database schema
+        - JSONB document structure
+        - Performance characteristics
+        - Logs or stack traces
+      placeholder: Add any other context about the problem here
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      description: How does this bug affect you?
+      options:
+        - label: Blocks production use
+        - label: Causes data corruption
+        - label: Performance regression
+        - label: Minor inconvenience

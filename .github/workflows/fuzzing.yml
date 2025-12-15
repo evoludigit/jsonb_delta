@@ -1,0 +1,182 @@
+name: Fuzzing
+
+# Continuous fuzzing to find edge cases and security vulnerabilities
+on:
+  schedule:
+    # Run fuzzing every night at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Fuzzing duration in seconds'
+        required: false
+        default: '300'
+        type: string
+
+permissions:
+  contents: read
+  issues: write  # To file bugs automatically
+
+jobs:
+  cargo-fuzz:
+    name: Cargo Fuzz
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - fuzz_merge_shallow
+          - fuzz_array_update
+          - fuzz_deep_merge
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Cache fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ matrix.target }}-${{ hashFiles('fuzz/**') }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Run fuzzer
+        run: |
+          DURATION=${{ github.event.inputs.duration || '300' }}
+          echo "Running ${{ matrix.target }} for ${DURATION}s"
+
+          # Run fuzzer with timeout
+          timeout ${DURATION}s cargo +nightly fuzz run ${{ matrix.target }} \
+            -- -max_total_time=${DURATION} \
+            -rss_limit_mb=2048 \
+            || true
+
+      - name: Check for crashes
+        id: check_crashes
+        run: |
+          if ls fuzz/artifacts/${{ matrix.target }}/crash-* 2>/dev/null; then
+            echo "crashes_found=true" >> $GITHUB_OUTPUT
+            echo "❌ Crashes found in ${{ matrix.target }}!"
+
+            # Save crash info
+            mkdir -p crash-reports
+            for crash in fuzz/artifacts/${{ matrix.target }}/crash-*; do
+              echo "## Crash: $(basename $crash)" >> crash-reports/${{ matrix.target }}.md
+              echo '```' >> crash-reports/${{ matrix.target }}.md
+              cat "$crash" | head -100 >> crash-reports/${{ matrix.target }}.md
+              echo '```' >> crash-reports/${{ matrix.target }}.md
+            done
+          else
+            echo "crashes_found=false" >> $GITHUB_OUTPUT
+            echo "✅ No crashes found in ${{ matrix.target }}"
+          fi
+
+      - name: Upload crash artifacts
+        if: steps.check_crashes.outputs.crashes_found == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            crash-reports/
+
+      - name: File GitHub issue for crashes
+        if: steps.check_crashes.outputs.crashes_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const crashReport = fs.readFileSync('crash-reports/${{ matrix.target }}.md', 'utf8');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Fuzzing] Crash found in ${{ matrix.target }}`,
+              body: `## Fuzzing Crash Report
+
+            **Target**: ${{ matrix.target }}
+            **Date**: ${new Date().toISOString()}
+            **Run**: ${{ github.run_id }}
+
+            ${crashReport}
+
+            ## Action Required
+
+            1. Reproduce the crash locally
+            2. Fix the underlying issue
+            3. Add regression test
+            4. Close this issue when fixed
+
+            ## Reproduce Locally
+
+            \`\`\`bash
+            cargo install cargo-fuzz
+            cargo +nightly fuzz run ${{ matrix.target }} fuzz/artifacts/${{ matrix.target }}/crash-*
+            \`\`\`
+            `,
+              labels: ['bug', 'security', 'fuzzing', 'needs-triage']
+            });
+
+      - name: Fail if crashes found
+        if: steps.check_crashes.outputs.crashes_found == 'true'
+        run: |
+          echo "❌ Fuzzing found crashes - see artifacts and filed issue"
+          exit 1
+
+  coverage:
+    name: Fuzzing Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libclang-dev \
+            pkg-config \
+            postgresql-server-dev-all \
+            libreadline-dev \
+            zlib1g-dev
+
+      - name: Install cargo-pgrx
+        run: cargo install cargo-pgrx --locked
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg17 download
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Install coverage tools
+        run: |
+          cargo install cargo-binutils
+          rustup component add llvm-tools-preview
+
+      - name: Generate coverage report
+        run: |
+          # Run fuzzing with coverage
+          cargo +nightly fuzz coverage fuzz_merge_shallow || true
+
+          # Generate HTML report
+          cargo cov -- show \
+            fuzz/target/*/release/fuzz_merge_shallow \
+            --format=html \
+            --instr-profile=fuzz/coverage/fuzz_merge_shallow/coverage.profdata \
+            > coverage.html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v5
+        with:
+          name: fuzz-coverage
+          path: coverage.html

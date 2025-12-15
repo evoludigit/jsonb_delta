@@ -1,0 +1,66 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "^https://github.com/fraiseql/jsonb_ivm/discussions"
+    },
+    {
+      "pattern": "^https://docs.rs/jsonb_ivm"
+    },
+    {
+      "pattern": "^https://github.com/yourusername/"
+    },
+    {
+      "pattern": "^https://github.com/your-org/"
+    },
+    {
+      "pattern": "^\\.\\./ROADMAP\\.md$"
+    },
+    {
+      "pattern": "^api-reference\\.md$"
+    },
+    {
+      "pattern": "^integration-guide\\.md$"
+    },
+    {
+      "pattern": "^architecture\\.md$"
+    },
+    {
+      "pattern": "^troubleshooting\\.md$"
+    },
+    {
+      "pattern": "^implementation/benchmark-results\\.md$"
+    },
+    {
+      "pattern": "^\\.\\./changelog\\.md$"
+    },
+    {
+      "pattern": "^docs/"
+    },
+    {
+      "pattern": "^development\\.md$"
+    },
+    {
+      "pattern": "^contributing\\.md$"
+    },
+    {
+      "pattern": "^TESTING\\.md$"
+    },
+    {
+      "pattern": "^LICENSE$"
+    },
+    {
+      "pattern": "^changelog\\.md$"
+    },
+    {
+      "pattern": "^\\.\\./README\\.md$"
+    }
+  ],
+  "timeout": "20s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "30s",
+  "aliveStatusCodes": [200, 206, 301, 302, 307, 308, 400]
+}

@@ -1,0 +1,114 @@
+ci:
+  skip: [cargo-fmt, cargo-clippy, cargo-audit, cargo-test-pre-push]
+
+repos:
+  # Rust formatting and linting
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+     hooks:
+       - id: trailing-whitespace
+       - id: end-of-file-fixer
+         exclude: ^sql/jsonb_delta--.*\.sql$  # pgrx-generated schema must preserve exact format
+       - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        types_or: [c, c++]
+        files: \.(c|cpp|cxx|cc|h|hpp|hxx)$
+
+  # Rust-specific hooks (using local system commands)
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format Rust code with cargo fmt
+        entry: cargo fmt --
+        language: system
+        pass_filenames: false
+        files: \.(rs|toml)$
+        types: [file]
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Run cargo clippy
+         entry: cargo clippy --no-default-features --features pg18 --lib --bin pgrx_embed_jsonb_delta -- -D warnings
+        language: system
+        pass_filenames: false
+        files: \.(rs|toml)$
+        types: [file]
+
+      # Security: Check for dependency vulnerabilities
+      - id: cargo-audit
+        name: cargo audit
+        description: Check for known security vulnerabilities in dependencies
+        entry: bash -c 'cargo audit --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2021-0127 || (echo "Security vulnerabilities found! Run cargo audit --fix"; exit 1)'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Security: Detect unsafe code usage
+      - id: check-unsafe
+        name: check unsafe code
+        description: Alert on new unsafe blocks
+        entry: bash -c 'git diff --cached --name-only | grep "\.rs$" | xargs grep -n "unsafe" || true'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        always_run: false
+
+  # Markdown linting (for documentation)
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.17.1
+    hooks:
+      - id: markdownlint-cli2
+        args: ['--config', '.markdownlint.yaml']
+
+  # Pre-push hook: Run tests before pushing
+  - repo: local
+    hooks:
+      - id: cargo-test-pre-push
+        name: cargo test (pre-push)
+        description: Run tests before pushing to remote
+        entry: |
+          bash -c '
+          set -e
+
+          # Skip in CI
+          if [ "$CI" = "true" ] || [ "$GITHUB_ACTIONS" = "true" ] || \
+             [ -n "$GITHUB_WORKSPACE" ] || [ "$USER" = "runner" ]; then
+            echo "⏭️  Skipping tests in CI - will be run by GitHub Actions"
+            exit 0
+          fi
+
+          echo ""
+          echo "🔒 PRE-PUSH PROTECTION: Running tests before push..."
+          echo "📊 This prevents pushing broken code to remote repository"
+          echo ""
+
+          # Run Rust unit tests
+          if cargo test --lib --no-default-features --features pg17; then
+            echo ""
+            echo "✅ All tests passed - push allowed"
+            echo "🚀 Pushing to remote repository..."
+            echo ""
+          else
+            echo ""
+            echo "❌ TESTS FAILED - PUSH BLOCKED"
+            echo "🚨 Cannot push broken code to remote repository"
+            echo "💡 Fix failing tests and try again"
+            echo "🔧 Run: cargo test --lib -- --nocapture"
+            echo ""
+            exit 1
+          fi
+          '
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+# Configuration
+default_install_hook_types: [pre-commit, pre-push]
+fail_fast: false

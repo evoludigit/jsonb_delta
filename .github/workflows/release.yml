@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-release:
+    name: Build Release for PostgreSQL ${{ matrix.pg-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        pg-version: [13, 14, 15, 16, 17]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL ${{ matrix.pg-version }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            postgresql-${{ matrix.pg-version }} \
+            postgresql-server-dev-${{ matrix.pg-version }}
+
+      - name: Install cargo-pgrx
+        run: |
+          cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: |
+          cargo pgrx init --pg${{ matrix.pg-version }}=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
+
+      - name: Build release package
+        run: |
+          cargo pgrx package --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
+
+      - name: Create tarball
+        run: |
+          cd target/release/jsonb_ivm-pg${{ matrix.pg-version }}
+          tar czf ../jsonb_ivm-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz .
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsonb_ivm-pg${{ matrix.pg-version }}
+          path: target/release/jsonb_ivm-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.git-cliff.outputs.content }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: git-cliff
+        uses: orhun/git-cliff-action@v2
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: changelog.md
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-release, generate-changelog]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-artifacts/*/*.tar.gz
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

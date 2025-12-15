@@ -1,0 +1,32 @@
+-- Expected output for test/sql/security_depth_limits.sql
+-- Basic functionality tests - should all pass
+
+-- Test 1: Basic deep merge
+ jsonb_deep_merge
+------------------
+ {"a": 1, "b": 2}
+(1 row)
+
+-- Test 2: Basic shallow merge
+ jsonb_merge_shallow
+---------------------
+ {"a": 1, "b": 2}
+(1 row)
+
+-- Test 3: Array update
+       jsonb_array_update_where
+---------------------------------------
+ {"items": [{"id": 1, "name": "Bob"}]}
+(1 row)
+
+-- Test 4: Array delete
+ jsonb_array_delete_where
+--------------------------
+ {"items": [{"id": 2}]}
+(1 row)
+
+-- Test 5: Nested structures within limits
+                  jsonb_deep_merge
+-----------------------------------------------------
+ {"user": {"profile": {"age": 30, "name": "Alice"}}}
+(1 row)
