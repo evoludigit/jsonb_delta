@@ -7,7 +7,8 @@
 
 ## Executive Summary
 
-jsonb_delta implements automated Software Bill of Materials (SBOM) generation to comply with global supply chain security standards. SBOMs are generated in CycloneDX format and cryptographically signed for integrity verification.
+jsonb_delta implements automated Software Bill of Materials (SBOM) generation to comply with global supply chain security standards.
+SBOMs are generated in CycloneDX format and cryptographically signed for integrity verification.
 
 ## What is an SBOM?
 
