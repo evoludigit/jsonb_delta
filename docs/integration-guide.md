@@ -23,7 +23,8 @@ Complete CRUD workflow examples for incremental view maintenance using jsonb_del
 
 ## Overview
 
-This guide shows how to use `jsonb_delta` functions in a CQRS architecture with projection tables. Each example demonstrates surgical JSONB updates for incremental view maintenance.
+This guide shows how to use `jsonb_delta` functions in a CQRS architecture with projection tables.
+Each example demonstrates surgical JSONB updates for incremental view maintenance.
 
 ### Key Features
 

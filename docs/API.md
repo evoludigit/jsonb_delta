@@ -107,7 +107,8 @@ SELECT jsonb_deep_merge(
 ### jsonb_array_update_where
 
 **Signature**:
-```
+
+```sql
 jsonb_array_update_where(target jsonb, array_path text, match_key text, match_value jsonb, updates jsonb) → jsonb
 ```
 
@@ -170,7 +171,8 @@ SELECT jsonb_array_update_where_batch(
 ### jsonb_array_update_multi_row
 
 **Signature**:
-```
+
+```sql
 jsonb_array_update_multi_row(targets jsonb[], array_path text, match_key text, match_value jsonb, updates jsonb) → TABLE (result jsonb)
 ```
 
@@ -204,7 +206,11 @@ SELECT * FROM jsonb_array_update_multi_row(
 
 ### jsonb_delta_array_update_where_path
 
-**Signature**: `jsonb_delta_array_update_where_path(target jsonb, array_key text, match_key text, match_value jsonb, update_path text, update_value jsonb) → jsonb`
+**Signature**:
+
+```sql
+jsonb_delta_array_update_where_path(target jsonb, array_key text, match_key text, match_value jsonb, update_path text, update_value jsonb) → jsonb
+```
 
 **Description**: Update a nested field in a JSONB array element using dot notation and array indexing paths.
 
@@ -259,7 +265,8 @@ SELECT jsonb_delta_array_update_where_path(
 ### jsonb_array_insert_where
 
 **Signature**:
-```
+
+```sql
 jsonb_array_insert_where(target jsonb, array_path text, new_element jsonb, sort_key text, sort_order text) → jsonb
 ```
 

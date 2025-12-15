@@ -218,7 +218,8 @@ SET data = jsonb_merge_shallow(
 - jsonb_delta: ~0.5ms
 - **Speedup: 1.6×**
 
-**Note**: The speedup is modest here because PostgreSQL's `||` operator is already well-optimized. The main benefit of `jsonb_merge_shallow` is consistency with other `jsonb_delta` functions and explicit merge semantics.
+**Note**: The speedup is modest here because PostgreSQL's `||` operator is already well-optimized.
+The main benefit of `jsonb_merge_shallow` is consistency with other `jsonb_delta` functions and explicit merge semantics.
 
 ---
 

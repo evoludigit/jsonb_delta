@@ -2,7 +2,8 @@
 
 ## Overview
 
-`jsonb_delta` is a PostgreSQL extension written in Rust using the [pgrx](https://github.com/pgcentralfoundation/pgrx) framework. It provides high-performance incremental update operations for JSONB documents, optimized for CQRS (Command Query Responsibility Segregation) architectures.
+`jsonb_delta` is a PostgreSQL extension written in Rust using the [pgrx](https://github.com/pgcentralfoundation/pgrx) framework.
+It provides high-performance incremental update operations for JSONB documents, optimized for CQRS (Command Query Responsibility Segregation) architectures.
 
 ## Module Structure (Phase 0: Modularization)
 
