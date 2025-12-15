@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-# Test runner script for jsonb_ivm extension
+# Test runner script for jsonb_delta extension
 
 echo "========================================="
-echo "Starting jsonb_ivm SQL Integration Tests"
+echo "Starting jsonb_delta SQL Integration Tests"
 echo "========================================="
 
 # Use pgrx-managed PostgreSQL 17
@@ -19,12 +19,12 @@ export PGHOST PGPORT
 
 # Create test database
 echo "Creating test database..."
-$PG_BIN/dropdb --if-exists test_jsonb_ivm 2>/dev/null || true
-$PG_BIN/createdb test_jsonb_ivm
+$PG_BIN/dropdb --if-exists test_jsonb_delta 2>/dev/null || true
+$PG_BIN/createdb test_jsonb_delta
 
 # Run SQL test file (includes CREATE EXTENSION)
 echo "Running SQL regression tests..."
-$PG_BIN/psql -d test_jsonb_ivm \
+$PG_BIN/psql -d test_jsonb_delta \
     -f test/sql/01_merge_shallow.sql \
     > test/results/01_merge_shallow.out 2>&1
 
@@ -40,7 +40,7 @@ fi
 
 # Cleanup
 echo "Cleaning up test database..."
-$PG_BIN/dropdb test_jsonb_ivm
+$PG_BIN/dropdb test_jsonb_delta
 
 echo "========================================="
 if [ $EXIT_CODE -eq 0 ]; then
