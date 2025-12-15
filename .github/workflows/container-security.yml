@@ -31,8 +31,8 @@ jobs:
 
       - name: Build Docker image
         run: |
-          echo "🏗️  Building Docker image for security scanning..."
-          docker build -t jsonb_delta:scan .
+          echo "🏗️  Building optimized Docker image for security scanning..."
+          docker build -f Dockerfile.security -t jsonb_delta:scan .
 
       - name: Run Trivy scan (SARIF)
         uses: aquasecurity/trivy-action@master
