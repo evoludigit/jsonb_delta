@@ -96,12 +96,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: release-artifacts
 
       - name: Download provenance
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl"
 
