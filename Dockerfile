@@ -2,27 +2,24 @@
 # Multi-stage build for minimal production image
 
 # =============================================================================
-# Stage 1: Builder
+# Stage 1: Builder (Optimized)
 # =============================================================================
+# Use official Rust image with pre-installed tools
 FROM rust:1.85-slim-bookworm AS builder
 
-# Install build dependencies
+# Install only essential PostgreSQL build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libclang-dev \
     pkg-config \
-    postgresql-server-dev-all \
-    libreadline-dev \
-    zlib1g-dev \
-    bison \
-    flex \
+    postgresql-server-dev-17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgrx
 RUN cargo install --locked cargo-pgrx --version 0.16.1
 
-# Set up pgrx for PostgreSQL 17
-RUN cargo pgrx init --pg17 download
+# Initialize pgrx with minimal setup
+RUN cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
 
 WORKDIR /build
 
@@ -32,11 +29,8 @@ COPY src/ ./src/
 COPY sql/ ./sql/
 COPY jsonb_delta.control ./
 
-# Build extension for PostgreSQL 17
-RUN cargo build --release --no-default-features --features pg17
-
-# Package with explicit pg_config path (standard pgrx Docker pattern)
-RUN cargo pgrx package --pg-config /root/.pgrx/17.7/pgrx-install/bin/pg_config
+# Build and package extension for PostgreSQL 17
+RUN cargo pgrx package --pg-config=/usr/lib/postgresql/17/bin/pg_config
 
 # =============================================================================
 # Stage 2: Production
@@ -59,9 +53,9 @@ RUN apt-get update && \
         && rm -rf /var/lib/apt/lists/*
 
 # Copy extension files from builder (pgrx package creates these paths)
-COPY --from=builder /build/target/release/jsonb_delta-pg17/root/.pgrx/17.7/pgrx-install/share/postgresql/extension/* \
+COPY --from=builder /build/target/release/jsonb_delta-pg17/usr/share/postgresql/17/extension/* \
     /usr/share/postgresql/17/extension/
-COPY --from=builder /build/target/release/jsonb_delta-pg17/root/.pgrx/17.7/pgrx-install/lib/postgresql/* \
+COPY --from=builder /build/target/release/jsonb_delta-pg17/usr/lib/postgresql/17/lib/* \
     /usr/lib/postgresql/17/lib/
 
 # Create extension in template database (optional)

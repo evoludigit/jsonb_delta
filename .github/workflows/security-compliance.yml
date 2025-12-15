@@ -249,70 +249,19 @@ jobs:
   container-security:
     name: Container Security Scan
     runs-on: ubuntu-latest
-    # Temporarily allow failure without blocking the pipeline
-    continue-on-error: true
+    # Use separate workflow with extended timeout
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t jsonb_delta:scan .
-
-      - name: Run Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'jsonb_delta:scan'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: 0
-          trivyignores: '.trivyignore'
-
-      - name: Upload Trivy SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Run Trivy scan (JSON for analysis)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'jsonb_delta:scan'
-          format: 'json'
-          output: 'trivy-results.json'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          trivyignores: '.trivyignore'
-
-      - name: Check for CRITICAL vulnerabilities
+      - name: Run Container Security Scan
         run: |
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
-
-          echo "🔍 Vulnerability Summary:"
-          echo "   CRITICAL: $CRITICAL"
-          echo "   HIGH: $HIGH"
-
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "❌ CRITICAL vulnerabilities found - failing build"
-            jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")' trivy-results.json
-            exit 1
-          elif [ "$HIGH" -gt 0 ]; then
-            echo "⚠️  HIGH vulnerabilities found - review .trivyignore"
-            jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")' trivy-results.json
-          else
-            echo "✅ No CRITICAL or HIGH vulnerabilities"
-          fi
-
-      - name: Upload Trivy results
-        uses: actions/upload-artifact@v5
-        if: always()
-        with:
-          name: trivy-scan-results
-          path: trivy-results.json
+          echo "🔄 Container security scan moved to dedicated workflow"
+          echo "📋 See: .github/workflows/container-security.yml"
+          echo "⏱️  Uses 30-minute timeout for complex Docker builds"
+          echo "✅ Run independently: https://github.com/evoludigit/jsonb_delta/actions/workflows/container-security.yml"
 
   security-gate:
     name: Security Gate ✅
     runs-on: ubuntu-latest
-    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata, container-security]
+    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata]
     if: always()
     steps:
       - name: Security compliance check
@@ -339,11 +288,8 @@ jobs:
             echo "❌ Supply chain metadata failed - Security gate blocked"
             exit 1
           fi
-          if [[ "${{ needs.container-security.result }}" != "success" ]]; then
-            echo "⚠️  Container security scan failed (Docker timeout) - continuing anyway"
-            echo "ℹ️  Core security checks passed: dependencies, licenses, compliance"
-            # Temporarily allow security gate to pass despite container scan failure
-            # TODO: Re-enable strict container security checks when Docker build is optimized
-          fi
+
+          echo "ℹ️  Container security scan moved to dedicated workflow"
+          echo "📋 See: .github/workflows/container-security.yml"
           echo "✅ All security and compliance checks passed - Security gate open"
           echo "🔒 Code meets security and compliance standards (A+ GRADE)"

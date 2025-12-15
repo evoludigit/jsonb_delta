@@ -1,0 +1,94 @@
+name: Container Security Scan
+
+# Dedicated workflow for container security scanning with extended timeout
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly security scans (every Monday at 3 AM UTC)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: container-security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # Required for uploading SARIF to Code Scanning
+  actions: read
+
+jobs:
+  container-security-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    # Extended timeout for complex Docker builds
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          echo "🏗️  Building Docker image for security scanning..."
+          docker build -t jsonb_delta:scan .
+
+      - name: Run Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'jsonb_delta:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: 0
+          trivyignores: '.trivyignore'
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy scan (JSON for analysis)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'jsonb_delta:scan'
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          trivyignores: '.trivyignore'
+
+      - name: Analyze vulnerabilities
+        run: |
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json)
+          LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json)
+
+          echo "🔍 Container Vulnerability Summary:"
+          echo "   CRITICAL: $CRITICAL"
+          echo "   HIGH: $HIGH"
+          echo "   MEDIUM: $MEDIUM"
+          echo "   LOW: $LOW"
+
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "❌ CRITICAL container vulnerabilities found!"
+            jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL") | {PackageName, VulnerabilityID, Severity, Title}' trivy-results.json
+            exit 1
+          elif [ "$HIGH" -gt 0 ]; then
+            echo "⚠️  HIGH container vulnerabilities found - review required"
+            jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH") | {PackageName, VulnerabilityID, Severity, Title}' trivy-results.json
+            # Allow HIGH vulnerabilities to pass (review .trivyignore)
+          else
+            echo "✅ No CRITICAL container vulnerabilities"
+          fi
+
+      - name: Upload Trivy results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: container-security-scan-results
+          path: |
+            trivy-results.json
+            trivy-results.sarif
