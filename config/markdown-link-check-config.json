@@ -10,6 +10,12 @@
       "pattern": "^https://docs.rs/jsonb_ivm"
     },
     {
+      "pattern": "^https://docs.rs/jsonb_delta"
+    },
+    {
+      "pattern": "^https://github.com/evoludigit/jsonb_delta/discussions"
+    },
+    {
       "pattern": "^https://github.com/yourusername/"
     },
     {
