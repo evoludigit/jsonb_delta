@@ -88,7 +88,7 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
-      provenance-name: "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl"
+      provenance-name: "jsonb_delta-${{ needs.build.outputs.version }}.intoto.jsonl"
 
   verify:
     name: Verify Provenance
@@ -103,7 +103,7 @@ jobs:
       - name: Download provenance
         uses: actions/download-artifact@v5
         with:
-          name: "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl"
+          name: "jsonb_delta-${{ needs.build.outputs.version }}.intoto.jsonl"
 
       - name: Install slsa-verifier
         run: |
@@ -117,7 +117,7 @@ jobs:
           for file in release-artifacts/*.so; do
             echo "Verifying $(basename $file)..."
             ./slsa-verifier verify-artifact \
-              --provenance-path "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl" \
+              --provenance-path "jsonb_delta-${{ needs.build.outputs.version }}.intoto.jsonl" \
               --source-uri github.com/${{ github.repository }} \
               "$file"
           done

@@ -72,11 +72,11 @@ jobs:
           PG_PORT=$(sudo pg_lsclusters -h | grep "^17 main" | awk '{print $3}')
           echo "Using PostgreSQL on port $PG_PORT"
 
-          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_ivm;" || true
-          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_ivm;"
-          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm -c "CREATE EXTENSION jsonb_ivm;"
+          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true
+          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_delta;"
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
 
-          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm \
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta \
             -f test/benchmark_pg_tview_helpers.sql \
             > benchmark_results.txt 2>&1
 

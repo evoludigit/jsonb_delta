@@ -1,5 +1,5 @@
 name: 🐛 Bug Report
-description: Report a bug or unexpected behavior in jsonb_ivm
+description: Report a bug or unexpected behavior in jsonb_delta
 title: "[Bug]: "
 labels: ["bug", "needs-triage"]
 body:
@@ -16,7 +16,7 @@ body:
       options:
         - label: I have searched existing issues and confirmed this is not a duplicate
           required: true
-        - label: I have read the [troubleshooting guide](https://github.com/fraiseql/jsonb_ivm/blob/main/docs/troubleshooting.md)
+        - label: I have read the [troubleshooting guide](https://github.com/fraiseql/jsonb_delta/blob/main/docs/troubleshooting.md)
           required: true
 
   - type: textarea
@@ -60,8 +60,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: jsonb_ivm Version
-      description: Run `SELECT extversion FROM pg_extension WHERE extname = 'jsonb_ivm';`
+      label: jsonb_delta Version
+      description: Run `SELECT extversion FROM pg_extension WHERE extname = 'jsonb_delta';`
       placeholder: "0.3.1"
     validations:
       required: true

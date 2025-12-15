@@ -24,7 +24,13 @@ jobs:
 
       - name: Install PostgreSQL ${{ matrix.pg-version }}
         run: |
-          sudo apt-get update
+          # Add PostgreSQL official repository for versions not in Ubuntu default repos
+          if [[ "${{ matrix.pg-version }}" != "16" ]]; then
+            sudo apt-get install -y wget ca-certificates
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+            echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+            sudo apt-get update
+          fi
           sudo apt-get install -y \
             postgresql-${{ matrix.pg-version }} \
             postgresql-server-dev-${{ matrix.pg-version }}
@@ -36,6 +42,8 @@ jobs:
       - name: Initialize pgrx
         run: |
           cargo pgrx init --pg${{ matrix.pg-version }}=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
+          # Verify pgrx is properly initialized
+          cargo pgrx status
 
       - name: Build release package
         run: |
@@ -43,8 +51,8 @@ jobs:
 
       - name: Create tarball
         run: |
-          cd target/release/jsonb_ivm-pg${{ matrix.pg-version }}
-          tar czf ../jsonb_ivm-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz .
+          cd target/release/jsonb_delta-pg${{ matrix.pg-version }}
+          tar czf ../jsonb_delta-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz .
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4

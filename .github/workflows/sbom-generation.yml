@@ -58,7 +58,7 @@ jobs:
 
     - name: Generate SBOM (CycloneDX JSON)
       run: |
-        cargo sbom --output-format cyclonedx_json > "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+        cargo sbom --output-format cyclonedx_json > "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json"
 
     - name: Add metadata to SBOM
       run: |
@@ -67,24 +67,24 @@ jobs:
            --arg timestamp "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
            '.metadata.timestamp = $timestamp |
             .metadata.component.version = $version |
-            .metadata.component.name = "jsonb_ivm" |
+            .metadata.component.name = "jsonb_delta" |
             .metadata.component.type = "library" |
             .metadata.component.description = "Incremental JSONB View Maintenance for PostgreSQL" |
             .metadata.component.licenses = [{"license": {"id": "PostgreSQL"}}] |
             .metadata.authors = [{"name": "FraiseQL Team", "email": "security@fraiseql.com"}] |
-            .metadata.supplier = {"name": "Evolution Digitale", "url": ["https://github.com/fraiseql/jsonb_ivm"]}' \
-          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" > temp.json
-        mv temp.json "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+            .metadata.supplier = {"name": "Evolution Digitale", "url": ["https://github.com/fraiseql/jsonb_delta"]}' \
+          "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json" > temp.json
+        mv temp.json "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json"
 
     - name: Validate SBOM (basic JSON validation)
       run: |
         # Validate JSON syntax
-        jq empty "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+        jq empty "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json"
         echo "✅ SBOM JSON is valid"
 
         # Check required fields
-        BOM_FORMAT=$(jq -r '.bomFormat' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
-        SPEC_VERSION=$(jq -r '.specVersion' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
+        BOM_FORMAT=$(jq -r '.bomFormat' "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json")
+        SPEC_VERSION=$(jq -r '.specVersion' "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json")
 
         if [ "$BOM_FORMAT" != "CycloneDX" ]; then
           echo "❌ Invalid bomFormat: $BOM_FORMAT"
@@ -99,65 +99,65 @@ jobs:
     - name: Sign SBOM with Cosign (keyless)
       run: |
         cosign sign-blob --yes \
-          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" \
-          --output-signature "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig" \
-          --output-certificate "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem"
+          "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json" \
+          --output-signature "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig" \
+          --output-certificate "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem"
 
         echo "✅ SBOM signed with Cosign (keyless Sigstore)"
-        echo "   Signature: jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig"
-        echo "   Certificate: jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem"
+        echo "   Signature: jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig"
+        echo "   Certificate: jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem"
 
     - name: Generate SHA256 checksums
       run: |
-        sha256sum "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" > \
-          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256"
+        sha256sum "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json" > \
+          "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sha256"
 
         echo "✅ SHA256 checksum generated"
 
     - name: Create SBOM artifact bundle
       run: |
         mkdir -p sbom-artifacts
-        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json sbom-artifacts/
-        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig sbom-artifacts/
-        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem sbom-artifacts/
-        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256 sbom-artifacts/
+        cp jsonb_delta-${{ steps.version.outputs.version }}-sbom.json sbom-artifacts/
+        cp jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig sbom-artifacts/
+        cp jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem sbom-artifacts/
+        cp jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sha256 sbom-artifacts/
 
         # Create README for verification
         cat > sbom-artifacts/README.md << 'EOF'
-        # jsonb_ivm SBOM Verification
+        # jsonb_delta SBOM Verification
 
         ## Files Included
 
-        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json` - CycloneDX SBOM (JSON format)
-        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig` - Cosign signature (keyless)
-        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem` - Cosign certificate
-        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256` - SHA256 checksum
+        - `jsonb_delta-${{ steps.version.outputs.version }}-sbom.json` - CycloneDX SBOM (JSON format)
+        - `jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig` - Cosign signature (keyless)
+        - `jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem` - Cosign certificate
+        - `jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sha256` - SHA256 checksum
 
         ## Verify SBOM Integrity
 
         ### 1. Verify SHA256 Checksum
         ```bash
-        sha256sum -c jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256
+        sha256sum -c jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sha256
         ```
 
         ### 2. Verify Cosign Signature
         ```bash
         cosign verify-blob \
-          --signature jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig \
-          --certificate jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem \
-          --certificate-identity-regexp "https://github.com/fraiseql/jsonb_ivm" \
+          --signature jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig \
+          --certificate jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem \
+          --certificate-identity-regexp "https://github.com/fraiseql/jsonb_delta" \
           --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+          jsonb_delta-${{ steps.version.outputs.version }}-sbom.json
         ```
 
         ### 3. Validate SBOM Schema
         ```bash
         # Basic validation (JSON syntax)
-        jq empty jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+        jq empty jsonb_delta-${{ steps.version.outputs.version }}-sbom.json
 
         # Full CycloneDX validation (requires cyclonedx-cli)
         npm install -g @cyclonedx/cyclonedx-cli
-        cyclonedx validate --input-file jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+        cyclonedx validate --input-file jsonb_delta-${{ steps.version.outputs.version }}-sbom.json
         ```
 
         ## SBOM Compliance
@@ -183,8 +183,8 @@ jobs:
 
         For SBOM-related questions or procurement inquiries:
         - Email: security@fraiseql.com
-        - Repository: https://github.com/fraiseql/jsonb_ivm
-        - Documentation: https://github.com/fraiseql/jsonb_ivm/tree/main/docs
+        - Repository: https://github.com/fraiseql/jsonb_delta
+        - Documentation: https://github.com/fraiseql/jsonb_delta/tree/main/docs
         EOF
 
     - name: Upload SBOM artifacts
@@ -199,10 +199,10 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
-          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig
-          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem
-          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256
+          jsonb_delta-${{ steps.version.outputs.version }}-sbom.json
+          jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sig
+          jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.pem
+          jsonb_delta-${{ steps.version.outputs.version }}-sbom.json.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -217,7 +217,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Count components
-        COMPONENT_COUNT=$(jq '.components | length' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
+        COMPONENT_COUNT=$(jq '.components | length' "jsonb_delta-${{ steps.version.outputs.version }}-sbom.json")
         echo "📦 **Total Components**: $COMPONENT_COUNT" >> $GITHUB_STEP_SUMMARY
 
         # Check licenses

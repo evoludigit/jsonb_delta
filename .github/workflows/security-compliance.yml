@@ -233,7 +233,7 @@ jobs:
         echo "📦 Direct dependencies: $DIRECT_DEPS"
         echo "📦 Total dependencies (with transitive): $TOTAL_DEPS"
 
-        # jsonb_ivm should have minimal dependencies (target: <50 total)
+        # jsonb_delta should have minimal dependencies (target: <50 total)
         if [ "$TOTAL_DEPS" -gt 100 ]; then
           echo "⚠️  High dependency count detected (review recommended)"
         else
@@ -253,12 +253,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t jsonb_ivm:scan .
+        run: docker build -t jsonb_delta:scan .
 
       - name: Run Trivy scan (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'jsonb_ivm:scan'
+          image-ref: 'jsonb_delta:scan'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -274,7 +274,7 @@ jobs:
       - name: Run Trivy scan (JSON for analysis)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'jsonb_ivm:scan'
+          image-ref: 'jsonb_delta:scan'
           format: 'json'
           output: 'trivy-results.json'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'

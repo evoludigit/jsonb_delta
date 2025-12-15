@@ -4,7 +4,7 @@
       "pattern": "^http://localhost"
     },
     {
-      "pattern": "^https://github.com/fraiseql/jsonb_ivm/discussions"
+      "pattern": "^https://github.com/evoludigit/jsonb_ivm/discussions"
     },
     {
       "pattern": "^https://docs.rs/jsonb_ivm"
