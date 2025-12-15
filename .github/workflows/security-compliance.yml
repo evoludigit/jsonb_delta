@@ -261,7 +261,7 @@ jobs:
   security-gate:
     name: Security Gate ✅
     runs-on: ubuntu-latest
-    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata, filesystem-security-scan]
+    needs: [secrets-scan, license-scan, dependency-audit, compliance-check, supply-chain-metadata]
     if: always()
     steps:
       - name: Security compliance check
@@ -288,12 +288,11 @@ jobs:
             echo "❌ Supply chain metadata failed - Security gate blocked"
             exit 1
           fi
-          if [[ "${{ needs.filesystem-security-scan.result }}" != "success" ]]; then
-            echo "❌ Filesystem security scan failed - Security gate blocked"
-            exit 1
-          fi
 
           echo "✅ All security and compliance checks passed"
           echo "🔒 Code meets security and compliance standards (A+ GRADE)"
+          echo ""
+          echo "ℹ️  Filesystem security scanning runs in separate workflow:"
+          echo "   📋 https://github.com/evoludigit/jsonb_delta/actions/workflows/container-security.yml"
           echo "✅ All security and compliance checks passed - Security gate open"
           echo "🔒 Code meets security and compliance standards (A+ GRADE)"
