@@ -1,0 +1,332 @@
+Timing is on.
+BEGIN
+Time: 0.170 ms
+CREATE TABLE
+Time: 6.991 ms
+CREATE TABLE
+Time: 5.870 ms
+CREATE TABLE
+Time: 3.540 ms
+INSERT 0 2
+Time: 0.748 ms
+INSERT 0 100
+Time: 2.888 ms
+INSERT 0 1000
+Time: 7.564 ms
+CREATE TABLE
+Time: 1.784 ms
+CREATE TABLE
+Time: 1.415 ms
+CREATE TABLE
+Time: 1.215 ms
+CREATE TABLE
+Time: 1.004 ms
+INSERT 0 2
+Time: 0.269 ms
+INSERT 0 100
+Time: 0.965 ms
+INSERT 0 1000
+Time: 4.485 ms
+INSERT 0 1
+Time: 2.011 ms
+COMMIT
+Time: 1.067 ms
+
+===== BENCHMARK 1: jsonb_smart_patch =====
+Test 1.1: Scalar update (company name change)
+BEGIN
+Time: 0.052 ms
+                                                            QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_company  (cost=0.15..8.17 rows=0 width=0) (actual time=0.066..0.066 rows=0 loops=1)
+   ->  Index Scan using tv_company_pkey on tv_company  (cost=0.15..8.17 rows=1 width=38) (actual time=0.057..0.058 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.099 ms
+ Execution Time: 0.224 ms
+(5 rows)
+
+Time: 0.503 ms
+ROLLBACK
+Time: 0.042 ms
+Test 1.2: Nested object update (company in user)
+BEGIN
+Time: 0.022 ms
+                                                             QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_user  (cost=8.17..28.30 rows=0 width=0) (actual time=0.915..0.915 rows=0 loops=1)
+   InitPlan 1
+     ->  Index Scan using tv_company_pkey on tv_company  (cost=0.15..8.17 rows=1 width=32) (actual time=0.009..0.009 rows=1 loops=1)
+           Index Cond: (pk = 1)
+   ->  Seq Scan on tv_user  (cost=0.00..20.14 rows=4 width=38) (actual time=0.050..0.783 rows=50 loops=1)
+         Filter: (fk_company = 1)
+         Rows Removed by Filter: 50
+ Planning Time: 0.098 ms
+ Execution Time: 0.941 ms
+(9 rows)
+
+Time: 1.199 ms
+ROLLBACK
+Time: 0.030 ms
+Test 1.3: Array element update (post in feed)
+BEGIN
+Time: 0.021 ms
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=8.46..16.48 rows=0 width=0) (actual time=2.075..2.075 rows=0 loops=1)
+   InitPlan 1
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.011..0.011 rows=1 loops=1)
+           Index Cond: (pk = 1)
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.18 rows=1 width=38) (actual time=1.733..1.760 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.152 ms
+ Execution Time: 2.107 ms
+(8 rows)
+
+Time: 2.527 ms
+ROLLBACK
+Time: 0.034 ms
+
+===== BENCHMARK 2: Array CRUD Operations =====
+Test 2.1a: DELETE via re-aggregation (BASELINE)
+BEGIN
+Time: 0.022 ms
+                                                            QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=470.62..478.64 rows=0 width=0) (actual time=9.522..9.522 rows=0 loops=1)
+   InitPlan 1
+     ->  Limit  (cost=470.45..470.46 rows=1 width=32) (actual time=4.701..4.702 rows=1 loops=1)
+           ->  Aggregate  (cost=470.45..470.46 rows=1 width=32) (actual time=4.701..4.701 rows=1 loops=1)
+                 ->  Sort  (cost=410.73..422.67 rows=4778 width=32) (actual time=0.643..0.662 rows=999 loops=1)
+                       Sort Key: (((tv_post.data ->> 'created_at'::text))::timestamp with time zone) DESC
+                       Sort Method: quicksort  Memory: 426kB
+                       ->  Seq Scan on tv_post  (cost=0.00..118.74 rows=4778 width=32) (actual time=0.006..0.420 rows=999 loops=1)
+                             Filter: (pk <> 50)
+                             Rows Removed by Filter: 1
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.17 rows=1 width=38) (actual time=6.771..6.896 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.055 ms
+ Execution Time: 9.768 ms
+(14 rows)
+
+Time: 9.992 ms
+ROLLBACK
+Time: 0.036 ms
+Test 2.1b: DELETE via jsonb_array_delete_where (OPTIMIZED)
+BEGIN
+Time: 0.022 ms
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=8.46..16.48 rows=0 width=0) (actual time=1.884..1.884 rows=0 loops=1)
+   InitPlan 1
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.010..0.010 rows=1 loops=1)
+           Index Cond: (pk = 50)
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.18 rows=1 width=38) (actual time=1.550..1.565 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.035 ms
+ Execution Time: 1.903 ms
+(8 rows)
+
+Time: 2.057 ms
+ROLLBACK
+Time: 0.034 ms
+Test 2.2a: INSERT via re-aggregation (BASELINE)
+BEGIN
+Time: 0.022 ms
+INSERT 0 1
+Time: 0.164 ms
+INSERT 0 1
+Time: 0.267 ms
+                                                             QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=458.75..466.77 rows=0 width=0) (actual time=8.744..8.745 rows=0 loops=1)
+   InitPlan 1
+     ->  Limit  (cost=458.59..458.60 rows=1 width=32) (actual time=4.235..4.235 rows=1 loops=1)
+           ->  Aggregate  (cost=458.59..458.60 rows=1 width=32) (actual time=4.234..4.234 rows=1 loops=1)
+                 ->  Sort  (cost=398.85..410.79 rows=4779 width=32) (actual time=0.604..0.622 rows=1001 loops=1)
+                       Sort Key: (((tv_post.data ->> 'created_at'::text))::timestamp with time zone) DESC
+                       Sort Method: quicksort  Memory: 427kB
+                       ->  Seq Scan on tv_post  (cost=0.00..106.79 rows=4779 width=32) (actual time=0.005..0.388 rows=1001 loops=1)
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.17 rows=1 width=38) (actual time=6.100..6.147 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.036 ms
+ Execution Time: 9.038 ms
+(12 rows)
+
+Time: 9.210 ms
+ROLLBACK
+Time: 0.040 ms
+Test 2.2b: INSERT via jsonb_array_insert_where (OPTIMIZED)
+BEGIN
+Time: 0.022 ms
+INSERT 0 1
+Time: 0.068 ms
+INSERT 0 1
+Time: 0.153 ms
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=8.45..16.47 rows=0 width=0) (actual time=1.927..1.927 rows=0 loops=1)
+   InitPlan 1
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.009..0.009 rows=1 loops=1)
+           Index Cond: (pk = 1001)
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.17 rows=1 width=38) (actual time=1.612..1.627 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.026 ms
+ Execution Time: 1.944 ms
+(8 rows)
+
+Time: 2.080 ms
+ROLLBACK
+Time: 0.035 ms
+
+===== BENCHMARK 3: jsonb_deep_merge =====
+Test 3.1a: Shallow merge (baseline)
+BEGIN
+Time: 0.022 ms
+ before_name | before_industry
+-------------+-----------------
+ ACME Corp   | Tech
+(1 row)
+
+Time: 0.127 ms
+UPDATE 1
+Time: 0.133 ms
+  after_name  | after_industry_lost | after_headquarters
+--------------+---------------------+--------------------
+ Updated Name |                     | NYC
+(1 row)
+
+Time: 0.066 ms
+ROLLBACK
+Time: 0.025 ms
+Test 3.1b: Deep merge (preserves nested fields)
+BEGIN
+Time: 0.020 ms
+ before_name | before_industry
+-------------+-----------------
+ ACME Corp   | Tech
+(1 row)
+
+Time: 0.065 ms
+UPDATE 1
+Time: 0.123 ms
+  after_name  | after_industry_preserved | after_headquarters
+--------------+--------------------------+--------------------
+ Updated Name | Tech                     | NYC
+(1 row)
+
+Time: 0.063 ms
+ROLLBACK
+Time: 0.024 ms
+
+===== BENCHMARK 4: Helper Functions =====
+Test 4.1: jsonb_extract_id
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..20.12 rows=810 width=32) (actual time=0.016..0.525 rows=100 loops=1)
+   ->  Seq Scan on tv_user  (cost=0.00..20.12 rows=810 width=32) (actual time=0.015..0.522 rows=100 loops=1)
+ Planning Time: 0.010 ms
+ Execution Time: 0.534 ms
+(4 rows)
+
+Time: 0.629 ms
+Test 4.2: jsonb_array_contains_id (find feeds containing specific post)
+                                                          QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on tv_feed  (cost=8.30..37.35 rows=423 width=4) (actual time=0.718..0.724 rows=1 loops=1)
+   Filter: jsonb_array_contains_id(data, 'posts'::text, 'id'::text, to_jsonb((InitPlan 1).col1))
+   InitPlan 1
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.009..0.010 rows=1 loops=1)
+           Index Cond: (pk = 1)
+ Planning Time: 0.029 ms
+ Execution Time: 0.735 ms
+(7 rows)
+
+Time: 0.865 ms
+
+===== STRESS TEST: Full Cascade =====
+Full cascade: Company -> Users (50) -> Posts (500)
+BEGIN
+Time: 0.026 ms
+UPDATE 1
+Time: 0.093 ms
+UPDATE 50
+Time: 0.980 ms
+UPDATE 500
+Time: 16.669 ms
+COMMIT
+Time: 0.937 ms
+Verifying cascade results:
+      step       |        value
+-----------------+----------------------
+ Company updated | ACME Corporation LLC
+(1 row)
+
+Time: 0.087 ms
+         step         |        value
+----------------------+----------------------
+ User company updated | ACME Corporation LLC
+(1 row)
+
+Time: 0.064 ms
+            step             |        value
+-----------------------------+----------------------
+ Post author company updated | ACME Corporation LLC
+(1 row)
+
+Time: 0.127 ms
+
+===== BENCHMARK 5: Batch Operations =====
+Test 5.1: Batch update multiple array elements
+BEGIN
+Time: 0.022 ms
+                                                               QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Update on tv_feed  (cost=25.06..33.10 rows=0 width=0) (actual time=1.937..1.937 rows=0 loops=1)
+   InitPlan 1
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.011..0.012 rows=1 loops=1)
+           Index Cond: (pk = 1)
+   InitPlan 2
+     ->  Index Scan using tv_post_pkey on tv_post tv_post_1  (cost=0.28..8.30 rows=1 width=32) (actual time=0.009..0.009 rows=1 loops=1)
+           Index Cond: (pk = 2)
+   InitPlan 3
+     ->  Index Scan using tv_post_pkey on tv_post tv_post_2  (cost=0.28..8.30 rows=1 width=32) (actual time=0.010..0.011 rows=1 loops=1)
+           Index Cond: (pk = 3)
+   ->  Index Scan using tv_feed_pkey on tv_feed  (cost=0.15..8.19 rows=1 width=38) (actual time=1.613..1.629 rows=1 loops=1)
+         Index Cond: (pk = 1)
+ Planning Time: 0.049 ms
+ Execution Time: 1.966 ms
+(14 rows)
+
+Time: 2.177 ms
+ROLLBACK
+Time: 0.034 ms
+Test 5.2: Update array in multiple rows
+BEGIN
+Time: 0.022 ms
+SELECT 1
+Time: 0.848 ms
+INSERT 0 1
+Time: 0.191 ms
+INSERT 0 1
+Time: 0.116 ms
+                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------
+ Function Scan on jsonb_array_update_multi_row  (cost=31.01..41.01 rows=1000 width=32) (actual time=4.820..4.821 rows=3 loops=1)
+   InitPlan 1
+     ->  Seq Scan on multi_feed  (cost=0.00..22.70 rows=1270 width=32) (actual time=0.002..0.002 rows=3 loops=1)
+   InitPlan 2
+     ->  Index Scan using tv_post_pkey on tv_post  (cost=0.28..8.30 rows=1 width=32) (actual time=0.011..0.012 rows=1 loops=1)
+           Index Cond: (pk = 1)
+ Planning Time: 0.059 ms
+ Execution Time: 4.840 ms
+(8 rows)
+
+Time: 5.030 ms
+DROP TABLE
+Time: 0.968 ms
+ROLLBACK
+Time: 0.200 ms
+DROP TABLE
+Time: 6.384 ms
+
+===== BENCHMARK COMPLETE =====

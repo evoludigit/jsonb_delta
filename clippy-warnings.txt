@@ -1,0 +1,1287 @@
+    Checking jsonb_ivm v0.3.0 (/home/lionel/code/pg-jsonb-ivm)
+error: adding items after statements is confusing, since items exist from the start of the scope
+  --> src/lib.rs:32:5
+   |
+32 |     const UNROLL: usize = 8;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#items_after_statements
+   = note: `-D clippy::items-after-statements` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::items_after_statements)]`
+
+error: the loop variable `i` is used to index `array`
+  --> src/lib.rs:52:14
+   |
+52 |     for i in (chunks * UNROLL)..array.len() {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_range_loop
+   = note: `-D clippy::needless-range-loop` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`
+help: consider using an iterator and enumerate()
+   |
+52 -     for i in (chunks * UNROLL)..array.len() {
+52 +     for (i, <item>) in array.iter().enumerate().skip((chunks * UNROLL)) {
+   |
+
+error: redundant closure
+  --> src/lib.rs:68:55
+   |
+68 |         .position(|elem| elem.get(match_key).and_then(|v| v.as_i64()) == Some(match_value))
+   |                                                       ^^^^^^^^^^^^^^ help: replace the closure with the method itself: `serde_json::Value::as_i64`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#redundant_closure_for_method_calls
+   = note: `-D clippy::redundant-closure-for-method-calls` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::redundant_closure_for_method_calls)]`
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:107:5
+    |
+107 | /     let target_obj = match target_value.as_object() {
+108 | |         Some(obj) => obj,
+109 | |         None => {
+110 | |             error!(
+...   |
+115 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+    = note: `-D clippy::manual-let-else` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_let_else)]`
+help: consider writing
+    |
+107 ~     let Some(target_obj) = target_value.as_object() else {
+108 +             error!(
+109 +                 "target argument must be a JSONB object, got: {}",
+110 +                 value_type_name(&target_value)
+111 +             );
+112 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:107:22
+    |
+107 |       let target_obj = match target_value.as_object() {
+    |  ______________________^
+108 | |         Some(obj) => obj,
+109 | |         None => {
+110 | |             error!(
+...   |
+115 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+    = note: `-D clippy::option-if-let-else` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::option_if_let_else)]`
+help: try
+    |
+107 ~     let target_obj = target_value.as_object().map_or_else(|| {
+108 +             error!(
+109 +                 "target argument must be a JSONB object, got: {}",
+110 +                 value_type_name(&target_value)
+111 +             );
+112 ~         }, |obj| obj);
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:117:5
+    |
+117 | /     let source_obj = match source_value.as_object() {
+118 | |         Some(obj) => obj,
+119 | |         None => {
+120 | |             error!(
+...   |
+125 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+117 ~     let Some(source_obj) = source_value.as_object() else {
+118 +             error!(
+119 +                 "source argument must be a JSONB object, got: {}",
+120 +                 value_type_name(&source_value)
+121 +             );
+122 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:117:22
+    |
+117 |       let source_obj = match source_value.as_object() {
+    |  ______________________^
+118 | |         Some(obj) => obj,
+119 | |         None => {
+120 | |             error!(
+...   |
+125 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+117 ~     let source_obj = source_value.as_object().map_or_else(|| {
+118 +             error!(
+119 +                 "source argument must be a JSONB object, got: {}",
+120 +                 value_type_name(&source_value)
+121 +             );
+122 ~         }, |obj| obj);
+    |
+
+error: it is more concise to loop over references to containers instead of using explicit iteration methods
+   --> src/lib.rs:130:25
+    |
+130 |     for (key, value) in source_obj.iter() {
+    |                         ^^^^^^^^^^^^^^^^^ help: to write this more concisely, try: `source_obj`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#explicit_iter_loop
+    = note: `-D clippy::explicit-iter-loop` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::explicit_iter_loop)]`
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:142:68
+    |
+142 | /// * `array_path` - Path to the array within the document (e.g., "dns_servers")
+    |                                                                    ^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+    = note: `-D clippy::doc-markdown` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::doc_markdown)]`
+help: try
+    |
+142 - /// * `array_path` - Path to the array within the document (e.g., "dns_servers")
+142 + /// * `array_path` - Path to the array within the document (e.g., "`dns_servers`")
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:168:29
+    |
+168 | /// - For nested paths, use jsonb_set with jsonb_array_update_where
+    |                             ^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+168 - /// - For nested paths, use jsonb_set with jsonb_array_update_where
+168 + /// - For nested paths, use `jsonb_set` with jsonb_array_update_where
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:168:44
+    |
+168 | /// - For nested paths, use jsonb_set with jsonb_array_update_where
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+168 - /// - For nested paths, use jsonb_set with jsonb_array_update_where
+168 + /// - For nested paths, use jsonb_set with `jsonb_array_update_where`
+    |
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:175:14
+    |
+175 |     updates: JsonB,
+    |              ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+    = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+    |
+175 |     updates: &JsonB,
+    |              +
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:181:5
+    |
+181 | /     let array = match target_value.get_mut(array_path) {
+182 | |         Some(arr) => arr,
+183 | |         None => {
+184 | |             error!("Path '{}' does not exist in document", array_path);
+185 | |         }
+186 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+181 ~     let Some(array) = target_value.get_mut(array_path) else {
+182 +             error!("Path '{}' does not exist in document", array_path);
+183 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:181:17
+    |
+181 |       let array = match target_value.get_mut(array_path) {
+    |  _________________^
+182 | |         Some(arr) => arr,
+183 | |         None => {
+184 | |             error!("Path '{}' does not exist in document", array_path);
+185 | |         }
+186 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+181 ~     let array = target_value.get_mut(array_path).map_or_else(|| {
+182 +             error!("Path '{}' does not exist in document", array_path);
+183 ~         }, |arr| arr);
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:189:5
+    |
+189 | /     let array_items = match array.as_array_mut() {
+190 | |         Some(arr) => arr,
+191 | |         None => {
+192 | |             error!(
+...   |
+198 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+189 ~     let Some(array_items) = array.as_array_mut() else {
+190 +             error!(
+191 +                 "Path '{}' does not point to an array, found: {}",
+192 +                 array_path,
+193 +                 value_type_name(array)
+194 +             );
+195 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:189:23
+    |
+189 |       let array_items = match array.as_array_mut() {
+    |  _______________________^
+190 | |         Some(arr) => arr,
+191 | |         None => {
+192 | |             error!(
+...   |
+198 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+189 ~     let array_items = array.as_array_mut().map_or_else(|| {
+190 +             error!(
+191 +                 "Path '{}' does not point to an array, found: {}",
+192 +                 array_path,
+193 +                 value_type_name(array)
+194 +             );
+195 ~         }, |arr| arr);
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:204:5
+    |
+204 | /     let updates_obj = match updates.0.as_object() {
+205 | |         Some(obj) => obj,
+206 | |         None => {
+207 | |             error!(
+...   |
+212 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+204 ~     let Some(updates_obj) = updates.0.as_object() else {
+205 +             error!(
+206 +                 "updates argument must be a JSONB object, got: {}",
+207 +                 value_type_name(&updates.0)
+208 +             );
+209 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:215:21
+    |
+215 |       let match_idx = if let Some(int_id) = match_val.as_i64() {
+    |  _____________________^
+216 | |         find_by_int_id_optimized(array_items, match_key, int_id)
+217 | |     } else {
+...   |
+223 | |         })
+224 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+215 ~     let match_idx = match_val.as_i64().map_or_else(|| array_items.iter().position(|elem| {
+216 +             elem.get(match_key)
+217 +                 .map(|v| v == &match_val)
+218 +                 .unwrap_or(false)
+219 ~         }), |int_id| find_by_int_id_optimized(array_items, match_key, int_id));
+    |
+
+error: called `map(<f>).unwrap_or(false)` on an `Option` value
+   --> src/lib.rs:220:13
+    |
+220 | /             elem.get(match_key)
+221 | |                 .map(|v| v == &match_val)
+222 | |                 .unwrap_or(false)
+    | |_________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#map_unwrap_or
+    = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+help: use `is_some_and(<f>)` instead
+    |
+221 -                 .map(|v| v == &match_val)
+221 +                 .is_some_and(|v| v == &match_val)
+    |
+
+error: it is more concise to loop over references to containers instead of using explicit iteration methods
+   --> src/lib.rs:229:33
+    |
+229 |             for (key, value) in updates_obj.iter() {
+    |                                 ^^^^^^^^^^^^^^^^^^ help: to write this more concisely, try: `updates_obj`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#explicit_iter_loop
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:242:48
+    |
+242 | /// * `array_path` - Path to the array (e.g., "dns_servers")
+    |                                                ^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+242 - /// * `array_path` - Path to the array (e.g., "dns_servers")
+242 + /// * `array_path` - Path to the array (e.g., "`dns_servers`")
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:244:35
+    |
+244 | /// * `updates_array` - Array of {match_value, updates} pairs
+    |                                   ^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+244 - /// * `updates_array` - Array of {match_value, updates} pairs
+244 + /// * `updates_array` - Array of {`match_value`, updates} pairs
+    |
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:268:20
+    |
+268 |     updates_array: JsonB,
+    |                    ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+268 |     updates_array: &JsonB,
+    |                    +
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:272:5
+    |
+272 | /     let array = match target_value.get_mut(array_path) {
+273 | |         Some(arr) => arr,
+274 | |         None => error!("Path '{}' does not exist in document", array_path),
+275 | |     };
+    | |______^ help: consider writing: `let Some(array) = target_value.get_mut(array_path) else { error!("Path '{}' does not exist in document", array_path) };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> src/lib.rs:272:17
+    |
+272 |       let array = match target_value.get_mut(array_path) {
+    |  _________________^
+273 | |         Some(arr) => arr,
+274 | |         None => error!("Path '{}' does not exist in document", array_path),
+275 | |     };
+    | |_____^ help: try: `if let Some(arr) = target_value.get_mut(array_path) { arr } else { error!("Path '{}' does not exist in document", array_path) }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#single_match_else
+    = note: `-D clippy::single-match-else` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::single_match_else)]`
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:272:17
+    |
+272 |       let array = match target_value.get_mut(array_path) {
+    |  _________________^
+273 | |         Some(arr) => arr,
+274 | |         None => error!("Path '{}' does not exist in document", array_path),
+275 | |     };
+    | |_____^ help: try: `target_value.get_mut(array_path).map_or_else(|| error!("Path '{}' does not exist in document", array_path), |arr| arr)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:277:5
+    |
+277 | /     let array_items = match array.as_array_mut() {
+278 | |         Some(arr) => arr,
+279 | |         None => error!("Path '{}' does not point to an array", array_path),
+280 | |     };
+    | |______^ help: consider writing: `let Some(array_items) = array.as_array_mut() else { error!("Path '{}' does not point to an array", array_path) };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> src/lib.rs:277:23
+    |
+277 |       let array_items = match array.as_array_mut() {
+    |  _______________________^
+278 | |         Some(arr) => arr,
+279 | |         None => error!("Path '{}' does not point to an array", array_path),
+280 | |     };
+    | |_____^ help: try: `if let Some(arr) = array.as_array_mut() { arr } else { error!("Path '{}' does not point to an array", array_path) }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#single_match_else
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:277:23
+    |
+277 |       let array_items = match array.as_array_mut() {
+    |  _______________________^
+278 | |         Some(arr) => arr,
+279 | |         None => error!("Path '{}' does not point to an array", array_path),
+280 | |     };
+    | |_____^ help: try: `array.as_array_mut().map_or_else(|| error!("Path '{}' does not point to an array", array_path), |arr| arr)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:282:5
+    |
+282 | /     let updates_list = match updates_array.0.as_array() {
+283 | |         Some(arr) => arr,
+284 | |         None => error!("updates_array must be a JSONB array"),
+285 | |     };
+    | |______^ help: consider writing: `let Some(updates_list) = updates_array.0.as_array() else { error!("updates_array must be a JSONB array") };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> src/lib.rs:282:24
+    |
+282 |       let updates_list = match updates_array.0.as_array() {
+    |  ________________________^
+283 | |         Some(arr) => arr,
+284 | |         None => error!("updates_array must be a JSONB array"),
+285 | |     };
+    | |_____^ help: try: `if let Some(arr) = updates_array.0.as_array() { arr } else { error!("updates_array must be a JSONB array") }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#single_match_else
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:282:24
+    |
+282 |       let updates_list = match updates_array.0.as_array() {
+    |  ________________________^
+283 | |         Some(arr) => arr,
+284 | |         None => error!("updates_array must be a JSONB array"),
+285 | |     };
+    | |_____^ help: try: `updates_array.0.as_array().map_or_else(|| error!("updates_array must be a JSONB array"), |arr| arr)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:292:9
+    |
+292 | /         let spec_obj = match update_spec.as_object() {
+293 | |             Some(obj) => obj,
+294 | |             None => continue, // Skip malformed specs
+295 | |         };
+    | |__________^ help: consider writing: `let Some(spec_obj) = update_spec.as_object() else { continue };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:297:9
+    |
+297 | /         let match_value = match spec_obj.get("match_value").and_then(|v| v.as_i64()) {
+298 | |             Some(id) => id,
+299 | |             None => continue,
+300 | |         };
+    | |__________^ help: consider writing: `let Some(match_value) = spec_obj.get("match_value").and_then(|v| v.as_i64()) else { continue };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: redundant closure
+   --> src/lib.rs:297:70
+    |
+297 |         let match_value = match spec_obj.get("match_value").and_then(|v| v.as_i64()) {
+    |                                                                      ^^^^^^^^^^^^^^ help: replace the closure with the method itself: `serde_json::Value::as_i64`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#redundant_closure_for_method_calls
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:302:9
+    |
+302 | /         let updates_obj = match spec_obj.get("updates").and_then(|v| v.as_object()) {
+303 | |             Some(obj) => obj,
+304 | |             None => continue,
+305 | |         };
+    | |__________^ help: consider writing: `let Some(updates_obj) = spec_obj.get("updates").and_then(|v| v.as_object()) else { continue };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: redundant closure
+   --> src/lib.rs:313:69
+    |
+313 |             if let Some(elem_id) = elem_obj.get(match_key).and_then(|v| v.as_i64()) {
+    |                                                                     ^^^^^^^^^^^^^^ help: replace the closure with the method itself: `serde_json::Value::as_i64`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#redundant_closure_for_method_calls
+
+error: it is more concise to loop over references to containers instead of using explicit iteration methods
+   --> src/lib.rs:316:41
+    |
+316 |                     for (key, value) in updates_obj.iter() {
+    |                                         ^^^^^^^^^^^^^^^^^^ help: to write this more concisely, try: `*updates_obj`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#explicit_iter_loop
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:372:14
+    |
+372 |     targets: pgrx::Array<JsonB>,
+    |              ^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+372 |     targets: &pgrx::Array<JsonB>,
+    |              +
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:376:14
+    |
+376 |     updates: JsonB,
+    |              ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+376 |     updates: &JsonB,
+    |              +
+
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> src/lib.rs:379:23
+    |
+379 |       let updates_obj = match updates.0.as_object() {
+    |  _______________________^
+380 | |         Some(obj) => obj.clone(),
+381 | |         None => error!("updates argument must be a JSONB object"),
+382 | |     };
+    | |_____^ help: try: `if let Some(obj) = updates.0.as_object() { obj.clone() } else { error!("updates argument must be a JSONB object") }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#single_match_else
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:379:23
+    |
+379 |       let updates_obj = match updates.0.as_object() {
+    |  _______________________^
+380 | |         Some(obj) => obj.clone(),
+381 | |         None => error!("updates argument must be a JSONB object"),
+382 | |     };
+    | |_____^ help: try: `updates.0.as_object().map_or_else(|| error!("updates argument must be a JSONB object"), |obj| obj.clone())`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+
+error: avoid using `collect()` when not needed
+   --> src/lib.rs:389:68
+    |
+389 |     let targets_vec: Vec<JsonB> = targets.iter().filter_map(|t| t).collect();
+    |                                                                    ^^^^^^^
+...
+392 |     TableIterator::new(targets_vec.into_iter().map(move |target| {
+    |                        ----------------------- the iterator could be used here instead
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_collect
+    = note: `-D clippy::needless-collect` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_collect)]`
+help: use the original Iterator instead of collecting it and then producing a new one
+    |
+389 ~
+390 |
+391 |     // Create iterator that will be returned as SETOF
+392 ~     TableIterator::new(targets.iter().filter_map(|t| t).map(move |target| {
+    |
+
+error: use of `filter_map` with an identity function
+   --> src/lib.rs:389:50
+    |
+389 |     let targets_vec: Vec<JsonB> = targets.iter().filter_map(|t| t).collect();
+    |                                                  ^^^^^^^^^^^^^^^^^ help: try: `flatten()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#filter_map_identity
+    = note: `-D clippy::filter-map-identity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::filter_map_identity)]`
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:426:47
+    |
+426 | fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: pgrx::Array<&str>) -> JsonB {
+    |                                               ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+426 | fn jsonb_merge_at_path(target: JsonB, source: &JsonB, path: pgrx::Array<&str>) -> JsonB {
+    |                                               +
+
+error: this argument is passed by value, but not consumed in the function body
+   --> src/lib.rs:426:60
+    |
+426 | fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: pgrx::Array<&str>) -> JsonB {
+    |                                                            ^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+426 | fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: &pgrx::Array<&str>) -> JsonB {
+    |                                                            +
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:431:5
+    |
+431 | /     let source_obj = match source.0.as_object() {
+432 | |         Some(obj) => obj,
+433 | |         None => {
+434 | |             error!(
+...   |
+439 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+431 ~     let Some(source_obj) = source.0.as_object() else {
+432 +             error!(
+433 +                 "source argument must be a JSONB object, got: {}",
+434 +                 value_type_name(&source.0)
+435 +             );
+436 +         };
+    |
+
+error: redundant closure
+   --> src/lib.rs:442:59
+    |
+442 |     let path_vec: Vec<String> = path.iter().flatten().map(|s| s.to_owned()).collect();
+    |                                                           ^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `std::borrow::ToOwned::to_owned`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#redundant_closure_for_method_calls
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:446:9
+    |
+446 | /         let target_obj = match target_value.as_object_mut() {
+447 | |             Some(obj) => obj,
+448 | |             None => {
+449 | |                 error!(
+...   |
+454 | |         };
+    | |__________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+446 ~         let Some(target_obj) = target_value.as_object_mut() else {
+447 +                 error!(
+448 +                     "target argument must be a JSONB object when path is empty, got: {}",
+449 +                     value_type_name(&target_value)
+450 +                 );
+451 +             };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:446:26
+    |
+446 |           let target_obj = match target_value.as_object_mut() {
+    |  __________________________^
+447 | |             Some(obj) => obj,
+448 | |             None => {
+449 | |                 error!(
+...   |
+454 | |         };
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+446 ~         let target_obj = target_value.as_object_mut().map_or_else(|| {
+447 +                 error!(
+448 +                     "target argument must be a JSONB object when path is empty, got: {}",
+449 +                     value_type_name(&target_value)
+450 +                 );
+451 ~             }, |obj| obj);
+    |
+
+error: it is more concise to loop over references to containers instead of using explicit iteration methods
+   --> src/lib.rs:457:29
+    |
+457 |         for (key, value) in source_obj.iter() {
+    |                             ^^^^^^^^^^^^^^^^^ help: to write this more concisely, try: `source_obj`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#explicit_iter_loop
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:471:13
+    |
+471 | /             let parent_obj = match current.as_object_mut() {
+472 | |                 Some(obj) => obj,
+473 | |                 None => {
+474 | |                     error!(
+...   |
+480 | |             };
+    | |______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+471 ~             let Some(parent_obj) = current.as_object_mut() else {
+472 +                     error!(
+473 +                         "Path navigation failed: expected object at {:?}, got: {}",
+474 +                         &path_vec[..i],
+475 +                         value_type_name(current)
+476 +                     );
+477 +                 };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:471:30
+    |
+471 |               let parent_obj = match current.as_object_mut() {
+    |  ______________________________^
+472 | |                 Some(obj) => obj,
+473 | |                 None => {
+474 | |                     error!(
+...   |
+480 | |             };
+    | |_____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+471 ~             let parent_obj = current.as_object_mut().map_or_else(|| {
+472 +                     error!(
+473 +                         "Path navigation failed: expected object at {:?}, got: {}",
+474 +                         &path_vec[..i],
+475 +                         value_type_name(current)
+476 +                     );
+477 ~                 }, |obj| obj);
+    |
+
+error: implicitly cloning a `String` by calling `to_string` on its dereferenced type
+   --> src/lib.rs:484:24
+    |
+484 |                 .entry(key.to_string())
+    |                        ^^^^^^^^^^^^^^^ help: consider using: `key.clone()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#implicit_clone
+    = note: `-D clippy::implicit-clone` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::implicit_clone)]`
+
+error: calling `Map::default()` is more clear than this expression
+   --> src/lib.rs:485:50
+    |
+485 |                 .or_insert_with(|| Value::Object(Default::default()));
+    |                                                  ^^^^^^^^^^^^^^^^^^ help: try: `Map::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#default_trait_access
+    = note: `-D clippy::default-trait-access` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::default_trait_access)]`
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:488:13
+    |
+488 | /             let merge_target = match target_at_path.as_object_mut() {
+489 | |                 Some(obj) => obj,
+490 | |                 None => {
+491 | |                     error!(
+...   |
+497 | |             };
+    | |______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+488 ~             let Some(merge_target) = target_at_path.as_object_mut() else {
+489 +                     error!(
+490 +                         "Cannot merge into non-object at path {:?}, found: {}",
+491 +                         path_vec,
+492 +                         value_type_name(target_at_path)
+493 +                     );
+494 +                 };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:488:32
+    |
+488 |               let merge_target = match target_at_path.as_object_mut() {
+    |  ________________________________^
+489 | |                 Some(obj) => obj,
+490 | |                 None => {
+491 | |                     error!(
+...   |
+497 | |             };
+    | |_____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+488 ~             let merge_target = target_at_path.as_object_mut().map_or_else(|| {
+489 +                     error!(
+490 +                         "Cannot merge into non-object at path {:?}, found: {}",
+491 +                         path_vec,
+492 +                         value_type_name(target_at_path)
+493 +                     );
+494 ~                 }, |obj| obj);
+    |
+
+error: it is more concise to loop over references to containers instead of using explicit iteration methods
+   --> src/lib.rs:499:33
+    |
+499 |             for (key, value) in source_obj.iter() {
+    |                                 ^^^^^^^^^^^^^^^^^ help: to write this more concisely, try: `source_obj`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#explicit_iter_loop
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:505:13
+    |
+505 | /             let obj = match current.as_object_mut() {
+506 | |                 Some(obj) => obj,
+507 | |                 None => {
+508 | |                     error!(
+...   |
+514 | |             };
+    | |______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+505 ~             let Some(obj) = current.as_object_mut() else {
+506 +                     error!(
+507 +                         "Path navigation failed at {:?}, expected object, got: {}",
+508 +                         &path_vec[..=i],
+509 +                         current_type
+510 +                     );
+511 +                 };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:505:23
+    |
+505 |               let obj = match current.as_object_mut() {
+    |  _______________________^
+506 | |                 Some(obj) => obj,
+507 | |                 None => {
+508 | |                     error!(
+...   |
+514 | |             };
+    | |_____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+505 ~             let obj = current.as_object_mut().map_or_else(|| {
+506 +                     error!(
+507 +                         "Path navigation failed at {:?}, expected object, got: {}",
+508 +                         &path_vec[..=i],
+509 +                         current_type
+510 +                     );
+511 ~                 }, |obj| obj);
+    |
+
+error: implicitly cloning a `String` by calling `to_string` on its dereferenced type
+   --> src/lib.rs:517:24
+    |
+517 |                 .entry(key.to_string())
+    |                        ^^^^^^^^^^^^^^^ help: consider using: `key.clone()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#implicit_clone
+
+error: calling `Map::default()` is more clear than this expression
+   --> src/lib.rs:518:50
+    |
+518 |                 .or_insert_with(|| Value::Object(Default::default()));
+    |                                                  ^^^^^^^^^^^^^^^^^^ help: try: `Map::default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#default_trait_access
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:527:16
+    |
+527 | /// Simplifies pg_tview implementations by providing a dedicated function for
+    |                ^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+527 - /// Simplifies pg_tview implementations by providing a dedicated function for
+527 + /// Simplifies `pg_tview` implementations by providing a dedicated function for
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:562:16
+    |
+562 | /// Simplifies pg_tview implementations for nested reference updates.
+    |                ^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+562 - /// Simplifies pg_tview implementations for nested reference updates.
+562 + /// Simplifies `pg_tview` implementations for nested reference updates.
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:598:16
+    |
+598 | /// Simplifies pg_tview implementations for array updates within JSONB documents.
+    |                ^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+598 - /// Simplifies pg_tview implementations for array updates within JSONB documents.
+598 + /// Simplifies `pg_tview` implementations for array updates within JSONB documents.
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:607:49
+    |
+607 | /// * `match_value` - Value to match (e.g., '42'::jsonb)
+    |                                                 ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+607 - /// * `match_value` - Value to match (e.g., '42'::jsonb)
+607 + /// * `match_value` - Value to match (e.g., '42'`::jsonb`)
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:709:5
+    |
+709 | /     let array = match target_value.get_mut(array_path) {
+710 | |         Some(arr) => arr,
+711 | |         None => return JsonB(target_value), // Array doesn't exist, return unchanged
+712 | |     };
+    | |______^ help: consider writing: `let Some(array) = target_value.get_mut(array_path) else { return JsonB(target_value) };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:715:5
+    |
+715 | /     let array_items = match array.as_array_mut() {
+716 | |         Some(arr) => arr,
+717 | |         None => return JsonB(target_value), // Not an array, return unchanged
+718 | |     };
+    | |______^ help: consider writing: `let Some(array_items) = array.as_array_mut() else { return JsonB(target_value) };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: called `map(<f>).unwrap_or(false)` on an `Option` value
+   --> src/lib.rs:731:13
+    |
+731 | /             elem.get(match_key)
+732 | |                 .map(|v| v == &match_val)
+733 | |                 .unwrap_or(false)
+    | |_________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#map_unwrap_or
+help: use `is_some_and(<f>)` instead
+    |
+732 -                 .map(|v| v == &match_val)
+732 +                 .is_some_and(|v| v == &match_val)
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:745:8
+    |
+745 | /// if sort_key is provided, or simply append to the end.
+    |        ^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+745 - /// if sort_key is provided, or simply append to the end.
+745 + /// if `sort_key` is provided, or simply append to the end.
+    |
+
+error: item in documentation is missing backticks
+   --> src/lib.rs:752:64
+    |
+752 | /// * `sort_key` - Optional key to maintain sort order (e.g., "created_at")
+    |                                                                ^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+    |
+752 - /// * `sort_key` - Optional key to maintain sort order (e.g., "created_at")
+752 + /// * `sort_key` - Optional key to maintain sort order (e.g., "`created_at`")
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:814:5
+    |
+814 | /     let target_obj = match target_value.as_object_mut() {
+815 | |         Some(obj) => obj,
+816 | |         None => {
+817 | |             error!(
+...   |
+822 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+814 ~     let Some(target_obj) = target_value.as_object_mut() else {
+815 +             error!(
+816 +                 "target must be a JSONB object, got: {}",
+817 +                 value_type_name(&target_value)
+818 +             );
+819 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:814:22
+    |
+814 |       let target_obj = match target_value.as_object_mut() {
+    |  ______________________^
+815 | |         Some(obj) => obj,
+816 | |         None => {
+817 | |             error!(
+...   |
+822 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+814 ~     let target_obj = target_value.as_object_mut().map_or_else(|| {
+815 +             error!(
+816 +                 "target must be a JSONB object, got: {}",
+817 +                 value_type_name(&target_value)
+818 +             );
+819 ~         }, |obj| obj);
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:828:5
+    |
+828 | /     let array_items = match array.as_array_mut() {
+829 | |         Some(arr) => arr,
+830 | |         None => {
+831 | |             error!(
+...   |
+837 | |     };
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+help: consider writing
+    |
+828 ~     let Some(array_items) = array.as_array_mut() else {
+829 +             error!(
+830 +                 "path '{}' must point to an array or not exist, got: {}",
+831 +                 array_path,
+832 +                 value_type_name(array)
+833 +             );
+834 +         };
+    |
+
+error: use Option::map_or_else instead of an if let/else
+   --> src/lib.rs:828:23
+    |
+828 |       let array_items = match array.as_array_mut() {
+    |  _______________________^
+829 | |         Some(arr) => arr,
+830 | |         None => {
+831 | |             error!(
+...   |
+837 | |     };
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+    |
+828 ~     let array_items = array.as_array_mut().map_or_else(|| {
+829 +             error!(
+830 +                 "path '{}' must point to an array or not exist, got: {}",
+831 +                 array_path,
+832 +                 value_type_name(array)
+833 +             );
+834 ~         }, |arr| arr);
+    |
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:861:5
+    |
+861 | /     let new_val = match new_val {
+862 | |         Some(v) => v,
+863 | |         None => return array.len(), // No sort value, insert at end
+864 | |     };
+    | |______^ help: consider writing: `let Some(new_val) = new_val else { return array.len() };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: this could be rewritten as `let...else`
+   --> src/lib.rs:869:13
+    |
+869 | /             let elem_val = match elem.get(sort_key) {
+870 | |                 Some(v) => v,
+871 | |                 None => return false, // Element has no sort key, continue searching
+872 | |             };
+    | |______________^ help: consider writing: `let Some(elem_val) = elem.get(sort_key) else { return false };`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: item in documentation is missing backticks
+    --> src/lib.rs:1003:34
+     |
+1003 | /// Simplifies ID extraction for pg_tview implementations by providing a safe,
+     |                                  ^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+     |
+1003 - /// Simplifies ID extraction for pg_tview implementations by providing a safe,
+1003 + /// Simplifies ID extraction for `pg_tview` implementations by providing a safe,
+     |
+
+error: this argument is passed by value, but not consumed in the function body
+    --> src/lib.rs:1050:27
+     |
+1050 | fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> {
+     |                           ^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+1050 | fn jsonb_extract_id(data: &JsonB, key: default!(&str, "'id'")) -> Option<String> {
+     |                           +
+
+error: item in documentation is missing backticks
+    --> src/lib.rs:1063:32
+     |
+1063 | /// Fast containment check for pg_tview implementations, with optimized
+     |                                ^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#doc_markdown
+help: try
+     |
+1063 - /// Fast containment check for pg_tview implementations, with optimized
+1063 + /// Fast containment check for `pg_tview` implementations, with optimized
+     |
+
+error: this argument is passed by value, but not consumed in the function body
+    --> src/lib.rs:1126:34
+     |
+1126 | fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+     |                                  ^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+1126 | fn jsonb_array_contains_id(data: &JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+     |                                  +
+
+error: this argument is passed by value, but not consumed in the function body
+    --> src/lib.rs:1126:83
+     |
+1126 | fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+     |                                                                                   ^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+     |
+1126 | fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: &JsonB) -> bool {
+     |                                                                                   +
+
+error: this could be rewritten as `let...else`
+    --> src/lib.rs:1127:5
+     |
+1127 | /     let obj = match data.0.as_object() {
+1128 | |         Some(o) => o,
+1129 | |         None => return false,
+1130 | |     };
+     | |______^ help: consider writing: `let Some(obj) = data.0.as_object() else { return false };`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: this could be rewritten as `let...else`
+    --> src/lib.rs:1132:5
+     |
+1132 | /     let array = match obj.get(array_path).and_then(|v| v.as_array()) {
+1133 | |         Some(arr) => arr,
+1134 | |         None => return false,
+1135 | |     };
+     | |______^ help: consider writing: `let Some(array) = obj.get(array_path).and_then(|v| v.as_array()) else { return false };`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#manual_let_else
+
+error: use Option::map_or_else instead of an if let/else
+    --> src/lib.rs:1138:5
+     |
+1138 | /     if let Some(int_id) = id_value.0.as_i64() {
+1139 | |         find_by_int_id_optimized(array, id_key, int_id).is_some()
+1140 | |     } else {
+...    |
+1144 | |             .any(|elem| elem.get(id_key).map(|v| v == &id_value.0).unwrap_or(false))
+1145 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#option_if_let_else
+help: try
+     |
+1138 ~     id_value.0.as_i64().map_or_else(|| array
+1139 +             .iter()
+1140 +             .any(|elem| elem.get(id_key).map(|v| v == &id_value.0).unwrap_or(false)), |int_id| find_by_int_id_optimized(array, id_key, int_id).is_some())
+     |
+
+error: called `map(<f>).unwrap_or(false)` on an `Option` value
+    --> src/lib.rs:1144:25
+     |
+1144 |             .any(|elem| elem.get(id_key).map(|v| v == &id_value.0).unwrap_or(false))
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#map_unwrap_or
+help: use `is_some_and(<f>)` instead
+     |
+1144 -             .any(|elem| elem.get(id_key).map(|v| v == &id_value.0).unwrap_or(false))
+1144 +             .any(|elem| elem.get(id_key).is_some_and(|v| v == &id_value.0))
+     |
+
+error: this could be a `const fn`
+    --> src/lib.rs:1149:1
+     |
+1149 | / fn value_type_name(value: &Value) -> &'static str {
+1150 | |     match value {
+1151 | |         Value::Null => "null",
+1152 | |         Value::Bool(_) => "boolean",
+...    |
+1158 | | }
+     | |_^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#missing_const_for_fn
+     = note: `-D clippy::missing-const-for-fn` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::missing_const_for_fn)]`
+help: make the function `const`
+     |
+1149 | const fn value_type_name(value: &Value) -> &'static str {
+     | +++++
+
+error: could not compile `jsonb_ivm` (lib) due to 87 previous errors

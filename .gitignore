@@ -1,0 +1,45 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# pgrx
+/.pgrx-test-data-*/
+/sql/*.generated.sql
+
+# PostgreSQL extension build artifacts
+*.o
+*.so
+*.bc
+*.d
+
+# PGXS generated files
+/regression.*
+/tmp_check/
+/results/
+
+# Test artifacts
+/test/results/
+/test/regression.*
+
+# Editor/IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Packaging
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+
+# Development
+.project-plan/
+.archive-c-implementation/

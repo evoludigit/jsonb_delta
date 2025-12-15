@@ -1,0 +1,57 @@
+CREATE EXTENSION
+   jsonb_merge_shallow
+--------------------------
+ {"a": 1, "b": 2, "c": 3}
+(1 row)
+
+    jsonb_merge_shallow
+---------------------------
+ {"a": 1, "b": 99, "c": 3}
+(1 row)
+
+ jsonb_merge_shallow
+---------------------
+ {"a": 1}
+(1 row)
+
+ jsonb_merge_shallow
+---------------------
+ {"a": 1}
+(1 row)
+
+ jsonb_merge_shallow
+---------------------
+ {}
+(1 row)
+
+ jsonb_merge_shallow
+---------------------
+
+(1 row)
+
+ jsonb_merge_shallow
+---------------------
+
+(1 row)
+
+   jsonb_merge_shallow
+-------------------------
+ {"a": {"z": 3}, "b": 3}
+(1 row)
+
+                             jsonb_merge_shallow
+-----------------------------------------------------------------------------
+ {"a": 1, "b": "text", "c": true, "d": [1, 2, 3], "e": {"nested": "object"}}
+(1 row)
+
+ count
+-------
+   150
+(1 row)
+
+                 jsonb_merge_shallow
+------------------------------------------------------
+ {"emoji": "🚀", "ville": "Montréal", "名前": "太郎"}
+(1 row)
+
+psql:test/sql/01_merge_shallow.sql:85: ERROR:  target argument must be a JSONB object, got: array

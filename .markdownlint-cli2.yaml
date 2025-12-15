@@ -1,0 +1,21 @@
+# markdownlint-cli2 configuration
+config:
+  MD013:
+    line_length: 120
+    code_blocks: false
+    tables: false
+  MD024: false  # Allow duplicate headings
+  MD029: false  # Allow flexible ordered list numbering
+  MD033: false  # Allow inline HTML (badges, email links)
+  MD034: false  # Allow bare URLs (for reference sections)
+  MD041: false  # Allow flexibility in first line
+
+# Ignore internal development documentation
+ignores:
+  - ".phases/**"
+  - "docs/archive/**"
+  - "docs/implementation/**"
+  - "phase-1-complete.md"
+  - "ci-cd-improvement-plan.md"
+  - "clippy-analysis-summary.md"
+  - "A_PLUS_IMPLEMENTATION_COMPLETE.md"

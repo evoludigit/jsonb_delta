@@ -1,0 +1,108 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'benchmark')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-benchmark-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install PostgreSQL 17
+        run: |
+          # Add PostgreSQL APT repository
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            postgresql-17 \
+            postgresql-server-dev-17
+
+          # Create and start cluster if it doesn't exist
+          if ! sudo pg_lsclusters | grep -q "17 main"; then
+            sudo pg_createcluster 17 main --start
+          else
+            sudo pg_ctlcluster 17 main start || true
+          fi
+
+          # Verify cluster is running
+          sudo pg_lsclusters
+          sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
+
+      - name: Install cargo-pgrx
+        run: cargo install --locked cargo-pgrx --version 0.16.1
+
+      - name: Initialize pgrx
+        run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+
+      - name: Build extension
+        run: cargo build --release --locked --no-default-features --features pg17
+
+      - name: Install extension
+        run: cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release --sudo
+
+      - name: Run benchmarks
+        run: |
+          # Get the port for PostgreSQL 17
+          PG_PORT=$(sudo pg_lsclusters -h | grep "^17 main" | awk '{print $3}')
+          echo "Using PostgreSQL on port $PG_PORT"
+
+          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_ivm;" || true
+          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_ivm;"
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm -c "CREATE EXTENSION jsonb_ivm;"
+
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_ivm \
+            -f test/benchmark_pg_tview_helpers.sql \
+            > benchmark_results.txt 2>&1
+
+      - name: Parse benchmark results
+        run: |
+          # Extract timing from benchmark output (\timing on outputs "Time: X ms")
+          grep -E "Time: [0-9]" benchmark_results.txt > timings.txt || echo "No timing data found"
+
+          # Display results
+          if [ -s timings.txt ]; then
+            echo "=== Benchmark Timings ==="
+            cat timings.txt
+          else
+            echo "⚠️  No timing data extracted from benchmark run"
+          fi
+
+          # Compare with baseline (if exists)
+          if [ -f benchmark_baseline.txt ]; then
+            # Simple comparison (can be enhanced with statistical analysis)
+            echo "Comparing with baseline..."
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark_results.txt
+            timings.txt

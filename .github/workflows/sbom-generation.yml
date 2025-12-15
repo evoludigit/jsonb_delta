@@ -1,0 +1,226 @@
+name: SBOM Generation
+
+# Generate Software Bill of Materials (SBOM) for global supply chain security compliance
+# (US EO 14028, EU NIS2/CRA, PCI-DSS 4.0, ISO 27001)
+# Runs on releases and can be manually triggered
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to generate SBOM for (e.g., 0.3.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # Required to upload release assets
+  id-token: write  # Required for Cosign keyless signing
+
+jobs:
+  generate-sbom:
+    name: Generate & Sign SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-sbom-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Determine version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+        else
+          VERSION="${{ github.event.inputs.version }}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Generating SBOM for version: $VERSION"
+
+    - name: Install cargo-sbom (CycloneDX)
+      run: |
+        cargo install cargo-sbom
+
+    - name: Generate SBOM (CycloneDX JSON)
+      run: |
+        cargo sbom --output-format cyclonedx_json > "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+
+    - name: Add metadata to SBOM
+      run: |
+        # Add project metadata using jq
+        jq --arg version "${{ steps.version.outputs.version }}" \
+           --arg timestamp "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+           '.metadata.timestamp = $timestamp |
+            .metadata.component.version = $version |
+            .metadata.component.name = "jsonb_ivm" |
+            .metadata.component.type = "library" |
+            .metadata.component.description = "Incremental JSONB View Maintenance for PostgreSQL" |
+            .metadata.component.licenses = [{"license": {"id": "PostgreSQL"}}] |
+            .metadata.authors = [{"name": "FraiseQL Team", "email": "security@fraiseql.com"}] |
+            .metadata.supplier = {"name": "Evolution Digitale", "url": ["https://github.com/fraiseql/jsonb_ivm"]}' \
+          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" > temp.json
+        mv temp.json "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+
+    - name: Validate SBOM (basic JSON validation)
+      run: |
+        # Validate JSON syntax
+        jq empty "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json"
+        echo "✅ SBOM JSON is valid"
+
+        # Check required fields
+        BOM_FORMAT=$(jq -r '.bomFormat' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
+        SPEC_VERSION=$(jq -r '.specVersion' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
+
+        if [ "$BOM_FORMAT" != "CycloneDX" ]; then
+          echo "❌ Invalid bomFormat: $BOM_FORMAT"
+          exit 1
+        fi
+
+        echo "✅ SBOM format: $BOM_FORMAT $SPEC_VERSION"
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3
+
+    - name: Sign SBOM with Cosign (keyless)
+      run: |
+        cosign sign-blob --yes \
+          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" \
+          --output-signature "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig" \
+          --output-certificate "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem"
+
+        echo "✅ SBOM signed with Cosign (keyless Sigstore)"
+        echo "   Signature: jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig"
+        echo "   Certificate: jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem"
+
+    - name: Generate SHA256 checksums
+      run: |
+        sha256sum "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json" > \
+          "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256"
+
+        echo "✅ SHA256 checksum generated"
+
+    - name: Create SBOM artifact bundle
+      run: |
+        mkdir -p sbom-artifacts
+        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json sbom-artifacts/
+        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig sbom-artifacts/
+        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem sbom-artifacts/
+        cp jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256 sbom-artifacts/
+
+        # Create README for verification
+        cat > sbom-artifacts/README.md << 'EOF'
+        # jsonb_ivm SBOM Verification
+
+        ## Files Included
+
+        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json` - CycloneDX SBOM (JSON format)
+        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig` - Cosign signature (keyless)
+        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem` - Cosign certificate
+        - `jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256` - SHA256 checksum
+
+        ## Verify SBOM Integrity
+
+        ### 1. Verify SHA256 Checksum
+        ```bash
+        sha256sum -c jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256
+        ```
+
+        ### 2. Verify Cosign Signature
+        ```bash
+        cosign verify-blob \
+          --signature jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig \
+          --certificate jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem \
+          --certificate-identity-regexp "https://github.com/fraiseql/jsonb_ivm" \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+        ```
+
+        ### 3. Validate SBOM Schema
+        ```bash
+        # Basic validation (JSON syntax)
+        jq empty jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+
+        # Full CycloneDX validation (requires cyclonedx-cli)
+        npm install -g @cyclonedx/cyclonedx-cli
+        cyclonedx validate --input-file jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+        ```
+
+        ## SBOM Compliance
+
+        This SBOM complies with global supply chain security standards:
+        - 🇺🇸 **US Executive Order 14028** (May 2021) - Software supply chain security
+        - 🇪🇺 **EU NIS2 Directive** & **Cyber Resilience Act** - Supply chain transparency
+        - 💳 **PCI-DSS 4.0** (Requirement 6.3.2) - Software component inventory
+        - 🌐 **ISO 27001:2022** (Control 5.21) - ICT supply chain security
+        - **CycloneDX Specification** - OWASP SBOM standard
+        - **NIST SP 800-161** - Cyber Supply Chain Risk Management
+
+        ## For Procurement & Security Teams
+
+        This SBOM provides:
+        1. ✅ Complete dependency inventory
+        2. ✅ License compliance information
+        3. ✅ Cryptographic integrity verification (SHA256 + Cosign)
+        4. ✅ Machine-readable format (CycloneDX JSON)
+        5. ✅ Vulnerability database integration (Package URLs)
+
+        ## Questions?
+
+        For SBOM-related questions or procurement inquiries:
+        - Email: security@fraiseql.com
+        - Repository: https://github.com/fraiseql/jsonb_ivm
+        - Documentation: https://github.com/fraiseql/jsonb_ivm/tree/main/docs
+        EOF
+
+    - name: Upload SBOM artifacts
+      uses: actions/upload-artifact@v5
+      with:
+        name: sbom-artifacts-${{ steps.version.outputs.version }}
+        path: sbom-artifacts/
+        retention-days: 90
+
+    - name: Attach SBOM to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json
+          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sig
+          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.pem
+          jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Summary
+      run: |
+        echo "## 📋 SBOM Generation Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Format**: CycloneDX (JSON)" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Signed**: Cosign keyless (Sigstore)" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Compliance**: US EO 14028, EU NIS2/CRA, PCI-DSS 4.0, ISO 27001" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Count components
+        COMPONENT_COUNT=$(jq '.components | length' "jsonb_ivm-${{ steps.version.outputs.version }}-sbom.json")
+        echo "📦 **Total Components**: $COMPONENT_COUNT" >> $GITHUB_STEP_SUMMARY
+
+        # Check licenses
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📥 Download Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "SBOM artifacts available in workflow artifacts section" >> $GITHUB_STEP_SUMMARY

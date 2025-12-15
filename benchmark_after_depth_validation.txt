@@ -1,0 +1,33 @@
+CREATE EXTENSION
+Timing is on.
+
+=== Benchmark 1: Small objects (10 keys) - 10,000 merges ===
+ count
+-------
+ 10000
+(1 row)
+
+Time: 1.667 ms
+
+=== Benchmark 2: Medium objects (50 keys) - 1,000 merges ===
+ count
+-------
+  1000
+(1 row)
+
+Time: 0.420 ms
+
+=== Benchmark 3: Large objects (150 keys) - 100 merges ===
+ count
+-------
+   100
+(1 row)
+
+Time: 0.144 ms
+Timing is off.
+
+=== Benchmark complete ===
+Expected performance thresholds:
+  Small (10 keys, 10k merges):  < 100ms
+  Medium (50 keys, 1k merges):  < 500ms
+  Large (150 keys, 100 merges): < 200ms

@@ -1,0 +1,124 @@
+name: SLSA Provenance
+
+# Generate SLSA Level 3 provenance for supply chain integrity
+# See: https://slsa.dev/
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # For Sigstore signing
+  contents: write   # For uploading release assets
+  actions: read     # For reading workflow artifacts
+
+jobs:
+  build:
+    name: Build Extension
+    runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PostgreSQL dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-server-dev-all
+
+      - name: Install pgrx
+        run: |
+          cargo install cargo-pgrx --locked
+          cargo pgrx init --pg17 download
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"  # Remove 'v' prefix
+          else
+            VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build extension
+        run: |
+          cargo pgrx package --pg-config $(which pg_config)
+
+      - name: Create release directory
+        run: |
+          mkdir -p release-artifacts
+          find target/release -name "*.so" -exec cp {} release-artifacts/ \;
+          find target/release -name "*.sql" -exec cp {} release-artifacts/ \;
+          find target/release -name "*.control" -exec cp {} release-artifacts/ \;
+
+      - name: Generate hashes
+        id: hash
+        run: |
+          cd release-artifacts
+          sha256sum * > ../checksums.txt
+          cat ../checksums.txt
+          echo "hashes=$(base64 -w0 ../checksums.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-artifacts
+          path: |
+            release-artifacts/
+            checksums.txt
+          retention-days: 5
+
+  provenance:
+    name: Generate SLSA Provenance
+    needs: [build]
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.10.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      upload-assets: true
+      provenance-name: "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl"
+
+  verify:
+    name: Verify Provenance
+    needs: [build, provenance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: release-artifacts
+
+      - name: Download provenance
+        uses: actions/download-artifact@v5
+        with:
+          name: "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl"
+
+      - name: Install slsa-verifier
+        run: |
+          curl -sSL https://github.com/slsa-framework/slsa-verifier/releases/download/v2.5.1/slsa-verifier-linux-amd64 \
+            -o slsa-verifier
+          chmod +x slsa-verifier
+
+      - name: Verify provenance
+        run: |
+          # Verify each artifact
+          for file in release-artifacts/*.so; do
+            echo "Verifying $(basename $file)..."
+            ./slsa-verifier verify-artifact \
+              --provenance-path "jsonb_ivm-${{ needs.build.outputs.version }}.intoto.jsonl" \
+              --source-uri github.com/${{ github.repository }} \
+              "$file"
+          done
+          echo "✅ All artifacts verified successfully"

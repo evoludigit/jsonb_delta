@@ -1,0 +1,16 @@
+# Markdownlint configuration
+# Strict rules for top quality markdown
+
+# MD013: Line length (strict: 120 chars)
+MD013:
+  line_length: 120
+  code_blocks: false
+  tables: false
+
+# MD033: Inline HTML allowed (needed for badges, email links)
+MD033: false
+
+# MD041: First line in file should be a top level header (allow flexibility)
+MD041: false
+
+# All other rules enabled by default for strict quality
