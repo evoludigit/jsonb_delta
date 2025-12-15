@@ -19,8 +19,8 @@ COPY src/ ./src/
 COPY sql/ ./sql/
 COPY jsonb_delta.control ./
 
-# Build with minimal features (fast compile for security scanning)
-RUN cargo build --release --no-default-features
+# Build with required features for security scanning
+RUN cargo build --release --no-default-features --features pg17
 
 # Labels for security scanning
 LABEL org.opencontainers.image.title="jsonb_delta"
