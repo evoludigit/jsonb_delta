@@ -1,7 +1,7 @@
 -- Test Suite: jsonb_merge_at_path()
 -- Expected: All tests pass
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 -- Test 1: Root level merge
 SELECT jsonb_merge_at_path(

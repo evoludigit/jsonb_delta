@@ -1,0 +1,9 @@
+\set ON_ERROR_STOP on
+-- Clean up from previous test runs
+DROP EXTENSION IF EXISTS jsonb_ivm CASCADE;
+psql:test/sql/06_deep_merge.sql:8: NOTICE:  extension "jsonb_ivm" does not exist, skipping
+DROP EXTENSION
+CREATE EXTENSION jsonb_ivm;
+psql:test/sql/06_deep_merge.sql:9: ERROR:  extension "jsonb_ivm" is not available
+DETAIL:  Could not open extension control file "/usr/share/postgresql/17/extension/jsonb_ivm.control": No such file or directory.
+HINT:  The extension must first be installed on the system where PostgreSQL is running.

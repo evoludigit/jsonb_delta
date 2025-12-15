@@ -1,0 +1,72 @@
+ test_scalar_simple 
+--------------------
+ t
+(1 row)
+
+ test_scalar_overwrite 
+-----------------------
+ t
+(1 row)
+
+ test_nested_single_level 
+--------------------------
+ t
+(1 row)
+
+ test_nested_deep 
+------------------
+ t
+(1 row)
+
+ test_nested_add_field 
+-----------------------
+ t
+(1 row)
+
+ test_array_int_id 
+-------------------
+ t
+(1 row)
+
+ test_array_string_id 
+----------------------
+ t
+(1 row)
+
+ test_array_no_match 
+---------------------
+ t
+(1 row)
+
+ test_array_multiple_fields 
+----------------------------
+ t
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+UPDATE 1
+ test_pg_tview_scalar 
+----------------------
+ t
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+UPDATE 1
+ company_updated | user_name_preserved 
+-----------------+---------------------
+ t               | t
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+UPDATE 1
+ title_updated | featured_added | other_post_unchanged 
+---------------+----------------+----------------------
+ t             | t              | t
+(1 row)
+
+===================================
+All jsonb_smart_patch tests passed!
+===================================

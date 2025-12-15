@@ -5,8 +5,8 @@
 \set ON_ERROR_STOP on
 
 -- Clean up from previous test runs
-DROP EXTENSION IF EXISTS jsonb_ivm CASCADE;
-CREATE EXTENSION jsonb_ivm;
+DROP EXTENSION IF EXISTS jsonb_delta CASCADE;
+CREATE EXTENSION jsonb_delta;
 
 -- ===== BASIC DEEP MERGE TESTS =====
 

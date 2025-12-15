@@ -1,0 +1,19 @@
+psql:test/sql/03_merge_at_path.sql:4: ERROR:  extension "jsonb_ivm" is not available
+DETAIL:  Could not open extension control file "/usr/share/postgresql/17/extension/jsonb_ivm.control": No such file or directory.
+HINT:  The extension must first be installed on the system where PostgreSQL is running.
+ test_root_merge 
+-----------------
+ t
+(1 row)
+
+ test_nested_merge 
+-------------------
+ t
+(1 row)
+
+ test_allocation_update 
+------------------------
+ t
+(1 row)
+
+All tests should return TRUE

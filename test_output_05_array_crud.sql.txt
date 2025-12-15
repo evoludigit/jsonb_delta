@@ -1,0 +1,99 @@
+ test_delete_basic 
+-------------------
+ t
+(1 row)
+
+ test_delete_string_id 
+-----------------------
+ t
+(1 row)
+
+ test_delete_no_match 
+----------------------
+ t
+(1 row)
+
+ test_delete_single_element 
+----------------------------
+ t
+(1 row)
+
+ test_delete_missing_array 
+---------------------------
+ t
+(1 row)
+
+ test_delete_first 
+-------------------
+ t
+(1 row)
+
+ test_delete_last 
+------------------
+ t
+(1 row)
+
+ test_insert_append 
+--------------------
+ t
+(1 row)
+
+ test_insert_empty 
+-------------------
+ t
+(1 row)
+
+ test_insert_create_array 
+--------------------------
+ t
+(1 row)
+
+ test_insert_ordered_asc 
+-------------------------
+ t
+(1 row)
+
+ test_insert_ordered_desc 
+--------------------------
+ t
+(1 row)
+
+ test_insert_ordered_timestamp 
+-------------------------------
+ t
+(1 row)
+
+ test_insert_at_beginning 
+--------------------------
+ t
+(1 row)
+
+ test_insert_at_end 
+--------------------
+ t
+(1 row)
+
+ test_delete_then_insert 
+-------------------------
+ t
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+UPDATE 1
+ post_deleted | post_20_gone | post_10_remains 
+--------------+--------------+-----------------
+ t            | t            | t
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+UPDATE 1
+ post_inserted | correct_position | correct_data 
+---------------+------------------+--------------
+ t             | t                | t
+(1 row)
+
+=========================================
+All array CRUD tests passed!
+=========================================

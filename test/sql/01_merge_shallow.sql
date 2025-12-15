@@ -1,7 +1,7 @@
 -- Test Suite: jsonb_merge_shallow()
 -- Expected: All tests pass
 
-CREATE EXTENSION jsonb_ivm;
+CREATE EXTENSION jsonb_delta;
 
 -- Test 1: Basic merge
 SELECT jsonb_merge_shallow(

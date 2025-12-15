@@ -1,7 +1,7 @@
 -- Test Suite: jsonb_array_update_where()
 -- Expected: All tests pass
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 -- Test 1: Basic array update
 SELECT jsonb_array_update_where(
