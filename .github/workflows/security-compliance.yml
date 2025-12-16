@@ -85,7 +85,7 @@ jobs:
         fi
 
     - name: Upload license report
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: license-report
         path: |
@@ -146,7 +146,7 @@ jobs:
         fi
 
     - name: Upload audit results
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: dependency-audit-results
@@ -241,7 +241,7 @@ jobs:
         fi
 
     - name: Upload dependency tree
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: dependency-tree
         path: dependency-tree.txt
@@ -301,7 +301,7 @@ jobs:
           fi
 
       - name: Upload Trivy results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: trivy-scan-results
