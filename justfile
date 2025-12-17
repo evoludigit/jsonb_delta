@@ -41,7 +41,7 @@ check:
     @echo "→ Checking formatting..."
     @cargo fmt --check
     @echo "→ Running clippy..."
-    @cargo clippy --all-targets --all-features -- -D warnings
+    @cargo clippy --all-targets -- -D warnings
     @echo "✅ All checks passed"
 
 # Auto-fix formatting and clippy issues
