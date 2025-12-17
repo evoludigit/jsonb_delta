@@ -17,9 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Only test PostgreSQL 17 in CI for speed
-        # Local testing covers all versions (13-18)
-        pg-version: [17]
+        pg-version: [13, 14, 15, 16, 17]
 
     steps:
       - name: Checkout code
@@ -41,42 +39,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install PostgreSQL ${{ matrix.pg-version }}
+      - name: Install PostgreSQL
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            # Add PostgreSQL APT repository
-            sudo apt-get install -y wget gnupg
-            sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          # Add PostgreSQL APT repository
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
 
-            sudo apt-get update
-            sudo apt-get install -y \
-              postgresql-${{ matrix.pg-version }} \
-              postgresql-server-dev-${{ matrix.pg-version }}
+          sudo apt-get update
+          sudo apt-get install -y postgresql-${{ matrix.pg-version }} postgresql-server-dev-${{ matrix.pg-version }}
 
-            # Create and start cluster if it doesn't exist, or start if exists but down
-            if ! sudo pg_lsclusters -h | grep -q "^${{ matrix.pg-version }} main"; then
-              # Cluster doesn't exist, create it
-              sudo pg_createcluster ${{ matrix.pg-version }} main --start || true
-            else
-              # Cluster exists, ensure it's running
-              sudo pg_ctlcluster ${{ matrix.pg-version }} main start || true
-            fi
-
-            # Verify cluster is running
-            sudo pg_lsclusters
-            sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install postgresql@${{ matrix.pg-version }}
-            brew services start postgresql@${{ matrix.pg-version }}
-
-            # Add PostgreSQL to PATH - handle both Intel and Apple Silicon paths
-            if [ -d "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin" ]; then
-              echo "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin" >> $GITHUB_PATH
-            else
-              echo "/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin" >> $GITHUB_PATH
-            fi
-          fi
+          # Start PostgreSQL
+          sudo pg_createcluster ${{ matrix.pg-version }} main --start || sudo pg_ctlcluster ${{ matrix.pg-version }} main start
 
       - name: Install cargo-pgrx
         run: |
@@ -84,63 +58,29 @@ jobs:
 
       - name: Initialize pgrx
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            cargo pgrx init --pg${{ matrix.pg-version }}=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            # Handle both Homebrew paths (Intel and Apple Silicon)
-            if [ -f "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config" ]; then
-              cargo pgrx init --pg${{ matrix.pg-version }}=/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config
-            else
-              cargo pgrx init --pg${{ matrix.pg-version }}=/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config
-            fi
-          fi
+          cargo pgrx init --pg${{ matrix.pg-version }}=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config
 
-      - name: Build extension
+      - name: Build and install extension
         run: |
-          cargo build --release --locked --no-default-features --features pg${{ matrix.pg-version }}
-
-      - name: Install extension
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            cargo pgrx install --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --release --sudo
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            # Handle both Homebrew paths (Intel and Apple Silicon)
-            if [ -f "/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config" ]; then
-              cargo pgrx install --pg-config=/opt/homebrew/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config --release --sudo
-            else
-              cargo pgrx install --pg-config=/usr/local/opt/postgresql@${{ matrix.pg-version }}/bin/pg_config --release --sudo
-            fi
-          fi
+          cargo pgrx install --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --release --sudo
 
       - name: Run SQL integration tests
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            # Get the port for this PostgreSQL version
-            PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
-            echo "Using PostgreSQL on port $PG_PORT"
+          # Get the port for this PostgreSQL version
+          PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
+          echo "Using PostgreSQL on port $PG_PORT"
 
-            sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true
-            sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_delta;"
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            psql -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true
-            psql -c "CREATE DATABASE test_jsonb_delta;"
-          fi
+          # Create test database
+          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true
+          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_delta;"
 
           # Create extension
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
-          else
-            psql -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
-          fi
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
 
           # Run all test files
           for test_file in test/sql/*.sql; do
             echo "Running $test_file..."
-            if [ "$RUNNER_OS" == "Linux" ]; then
-              sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -f "$test_file" > "test_output_$(basename $test_file).txt" 2>&1
-            elif [ "$RUNNER_OS" == "macOS" ]; then
-              psql -d test_jsonb_delta -f "$test_file" > "test_output_$(basename $test_file).txt" 2>&1
-            fi
+            sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -f "$test_file" > "test_output_$(basename $test_file).txt" 2>&1
 
             if [ $? -ne 0 ]; then
               echo "❌ FAILED: $test_file"
@@ -153,11 +93,7 @@ jobs:
 
           # Run v0.1.0 smoke tests
           echo "Running v0.1.0 smoke tests..."
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            psql -d test_jsonb_delta -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
-          fi
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -f test/smoke_test_v0.1.0.sql > test_output_smoke_v0.1.0.txt 2>&1
 
           if [ $? -ne 0 ]; then
             echo "❌ FAILED: v0.1.0 smoke tests"
@@ -169,19 +105,8 @@ jobs:
 
       - name: Validate SQL schema generation
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            # Get the port for this PostgreSQL version
-            PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
-            echo "Using PostgreSQL on port $PG_PORT for schema generation"
-
-            # Set PGPORT for pgrx to use
-            export PGPORT=$PG_PORT
-          fi
-
-          # Generate schema using the correct PostgreSQL version
           cargo pgrx schema pg${{ matrix.pg-version }} > /tmp/generated-schema.sql
 
-          # Check if schema matches committed version
           if ! diff -u sql/jsonb_delta--0.1.0.sql /tmp/generated-schema.sql; then
             echo "❌ Generated schema doesn't match committed version!"
             echo "Run: cargo pgrx schema > sql/jsonb_delta--0.1.0.sql"
