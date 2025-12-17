@@ -62,7 +62,7 @@ jobs:
 
       - name: Build and install extension
         run: |
-          cargo pgrx install --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --release
+          cargo pgrx install --pg-config=/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --release --sudo
 
       - name: Run SQL integration tests
         run: |
