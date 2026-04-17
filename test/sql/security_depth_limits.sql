@@ -37,3 +37,11 @@ SELECT jsonb_deep_merge(
     '{"user": {"profile": {"name": "Alice"}}}'::jsonb,
     '{"user": {"profile": {"age": 30}}}'::jsonb
 );
+
+-- Test 6: Array index bound enforcement
+SELECT jsonb_delta_set_path(
+    '{"a": []}'::jsonb,
+    'a[200000]',
+    '1'::jsonb
+);
+-- Expected: ERROR containing "Array index"
