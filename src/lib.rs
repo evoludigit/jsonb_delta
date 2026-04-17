@@ -10,6 +10,8 @@ use pgrx::prelude::*;
 use pgrx::JsonB;
 use serde_json::Value;
 
+use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
+
 // Tell pgrx which PostgreSQL versions we support
 pgrx::pg_module_magic!();
 
@@ -280,6 +282,9 @@ fn jsonb_delta_array_update_where_path(
                         .or_insert(Value::Object(serde_json::Map::new()));
                 }
                 PathSegment::Index(idx) => {
+                    // TODO(dedup): consider calling path::set_path instead of duplicating path-navigation logic
+                    validate_array_index(*idx, MAX_JSONB_ARRAY_SIZE)
+                        .unwrap_or_else(|e| error!("{}", e));
                     if !current.is_array() {
                         *current = Value::Array(Vec::new());
                     }
