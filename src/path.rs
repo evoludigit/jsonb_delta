@@ -5,6 +5,8 @@
 
 use serde_json::Value;
 
+use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
+
 /// Represents a single segment in a JSONB path
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PathSegment {
@@ -157,6 +159,17 @@ pub fn navigate_path<'a>(json: &'a Value, path: &[PathSegment]) -> Option<&'a Va
     Some(current)
 }
 
+/// Extend `arr` to hold at least `idx + 1` elements, padding with `Value::Null`.
+///
+/// Returns `Err` if `idx` exceeds [`MAX_JSONB_ARRAY_SIZE`].
+fn ensure_array_capacity(arr: &mut Vec<Value>, idx: usize) -> Result<(), String> {
+    validate_array_index(idx, MAX_JSONB_ARRAY_SIZE)?;
+    while arr.len() <= idx {
+        arr.push(Value::Null);
+    }
+    Ok(())
+}
+
 /// Set a value at a specific path in a JSONB document
 ///
 /// This is a mutable version of navigation that can create intermediate objects/arrays
@@ -207,10 +220,7 @@ pub fn set_path(json: &mut Value, path: &[PathSegment], value: Value) -> Result<
                     *current = Value::Array(Vec::new());
                 }
                 let arr = current.as_array_mut().unwrap();
-                // Extend array if necessary
-                while arr.len() <= *idx {
-                    arr.push(Value::Null);
-                }
+                ensure_array_capacity(arr, *idx)?;
                 current = &mut arr[*idx];
             }
         }
@@ -230,10 +240,7 @@ pub fn set_path(json: &mut Value, path: &[PathSegment], value: Value) -> Result<
                 *current = Value::Array(Vec::new());
             }
             let arr = current.as_array_mut().unwrap();
-            // Extend array if necessary
-            while arr.len() <= *idx {
-                arr.push(Value::Null);
-            }
+            ensure_array_capacity(arr, *idx)?;
             arr[*idx] = value;
         }
     }
@@ -356,5 +363,24 @@ mod tests {
             data,
             json!({"user": {"profile": {"settings": {"theme": "dark"}}}})
         );
+    }
+
+    #[test]
+    fn test_set_path_rejects_huge_index() {
+        let mut doc = serde_json::json!({});
+        let path = parse_path("arr[200000]").unwrap();
+        let result = set_path(&mut doc, &path, serde_json::json!(1));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("200000"), "error should mention the index");
+    }
+
+    #[test]
+    fn test_set_path_accepts_index_at_limit() {
+        // Index 99,999 is the last legal index (array would be 100,000 elements)
+        let mut doc = serde_json::json!({});
+        let path = parse_path("arr[99999]").unwrap();
+        // This allocates 100k nulls — just verify it doesn't panic
+        assert!(set_path(&mut doc, &path, serde_json::json!(1)).is_ok());
     }
 }
