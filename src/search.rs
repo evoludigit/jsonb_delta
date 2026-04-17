@@ -2,8 +2,6 @@
 //
 // High-performance search functions for finding elements in JSONB arrays.
 // Includes SIMD-optimized integer ID matching with loop unrolling.
-//
-// Part of Phase 0: Code Modularization
 
 use serde_json::Value;
 

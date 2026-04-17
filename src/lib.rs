@@ -10,6 +10,7 @@ use pgrx::prelude::*;
 use pgrx::JsonB;
 use serde_json::Value;
 
+use crate::array_ops::validate_match_key;
 use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
 
 // Tell pgrx which PostgreSQL versions we support
@@ -29,14 +30,14 @@ pub mod pg_test {
     }
 }
 
-// Module declarations (Phase 0: Modularization)
+// Module declarations
 mod array_ops;
 mod depth;
 mod merge;
 pub mod path; // Public for doc tests
 mod search;
 
-// Property-based testing infrastructure (Phase 4)
+// Property-based testing infrastructure
 #[cfg(test)]
 mod property_tests;
 
@@ -175,6 +176,8 @@ fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> 
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
 fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+    validate_match_key(id_key).unwrap_or_else(|e| error!("{}", e));
+
     let Some(obj) = data.0.as_object() else {
         return false;
     };
@@ -189,7 +192,11 @@ fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value
 
 /// Find element in array by key-value match with integer optimization
 #[inline]
-fn find_element_by_match(array: &[Value], match_key: &str, match_value: &Value) -> Option<usize> {
+pub(crate) fn find_element_by_match(
+    array: &[Value],
+    match_key: &str,
+    match_value: &Value,
+) -> Option<usize> {
     match_value.as_i64().map_or_else(
         || {
             array
@@ -200,7 +207,7 @@ fn find_element_by_match(array: &[Value], match_key: &str, match_value: &Value) 
     )
 }
 
-/// Update a field in a JSONB array element using nested paths (Phase 3)
+/// Update a field in a JSONB array element using nested paths
 ///
 /// This is the path-based variant of `jsonb_array_update_where` that supports
 /// nested object navigation using dot notation and array indexing.
@@ -238,6 +245,8 @@ fn jsonb_delta_array_update_where_path(
     update_value: JsonB,
 ) -> JsonB {
     let mut target_value: Value = target.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
 
     // Parse the update path
     let update_segments = parse_path(update_path)
@@ -282,7 +291,6 @@ fn jsonb_delta_array_update_where_path(
                         .or_insert(Value::Object(serde_json::Map::new()));
                 }
                 PathSegment::Index(idx) => {
-                    // TODO(dedup): consider calling path::set_path instead of duplicating path-navigation logic
                     validate_array_index(*idx, MAX_JSONB_ARRAY_SIZE)
                         .unwrap_or_else(|e| error!("{}", e));
                     if !current.is_array() {
@@ -310,7 +318,7 @@ fn jsonb_delta_array_update_where_path(
     JsonB(target_value)
 }
 
-/// Set a value at any nested path in a JSONB document (Phase 3)
+/// Set a value at any nested path in a JSONB document
 ///
 /// General-purpose path-based setter that supports dot notation and array indexing.
 /// Creates intermediate objects/arrays as needed.
@@ -359,8 +367,7 @@ fn jsonb_delta_set_path(target: JsonB, path: &str, value: JsonB) -> JsonB {
 }
 
 /// Helper function to get human-readable type name for error messages
-#[allow(dead_code)]
-const fn value_type_name(value: &Value) -> &'static str {
+pub(crate) const fn value_type_name(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "boolean",

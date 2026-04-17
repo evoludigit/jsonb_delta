@@ -1,33 +1,57 @@
-psql:test/sql/nested_paths.sql:6: ERROR:  function jsonb_delta_array_update_where_path(jsonb, unknown, unknown, jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_array_update_where_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:15: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:25: ERROR:  function jsonb_delta_array_update_where_path(jsonb, unknown, unknown, jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_array_update_where_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:35: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:43: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:51: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:58: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-psql:test/sql/nested_paths.sql:65: ERROR:  function jsonb_delta_set_path(jsonb, unknown, jsonb) does not exist
-LINE 2: SELECT jsonb_delta_set_path(
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-All tests should fail initially with "function does not exist" errors
+CREATE EXTENSION
+ test_01_dot_notation_nested_update
+------------------------------------
+ t
+(1 row)
+
+ test_02_nested_array_index
+----------------------------
+ t
+(1 row)
+
+ test_03_mixed_path_complex
+----------------------------
+ t
+(1 row)
+
+ test_04_deep_dot_notation
+---------------------------
+ t
+(1 row)
+
+ test_05_array_index_update
+----------------------------
+ t
+(1 row)
+
+ test_06_create_new_key_in_object
+----------------------------------
+ t
+(1 row)
+
+ test_07_array_pad_with_nulls
+------------------------------
+ t
+(1 row)
+
+ test_08_object_replaced_by_array
+----------------------------------
+ t
+(1 row)
+
+ test_09_create_deep_chain
+---------------------------
+ t
+(1 row)
+
+ test_10_set_index_zero_empty_array
+------------------------------------
+ t
+(1 row)
+
+DO
+           passed
+-----------------------------
+ test_11_empty_path_rejected
+(1 row)
+

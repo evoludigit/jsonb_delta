@@ -7,6 +7,9 @@ use serde_json::Value;
 
 use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
 
+/// Maximum allowed length (in bytes) for a single key segment in a path.
+const MAX_KEY_LENGTH: usize = 256;
+
 /// Represents a single segment in a JSONB path
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PathSegment {
@@ -95,6 +98,11 @@ pub fn parse_path(path: &str) -> Result<Vec<PathSegment>, String> {
             }
             _ => {
                 current_key.push(ch);
+                if current_key.len() > MAX_KEY_LENGTH {
+                    return Err(format!(
+                        "Invalid path: key segment exceeds maximum allowed length {MAX_KEY_LENGTH}"
+                    ));
+                }
             }
         }
     }
@@ -382,5 +390,22 @@ mod tests {
         let path = parse_path("arr[99999]").unwrap();
         // This allocates 100k nulls — just verify it doesn't panic
         assert!(set_path(&mut doc, &path, serde_json::json!(1)).is_ok());
+    }
+
+    #[test]
+    fn test_parse_path_rejects_key_too_long() {
+        let long_key = "a".repeat(257);
+        let path = format!("{long_key}.b");
+        let err = parse_path(&path).unwrap_err();
+        assert!(
+            err.contains("257") || err.contains("256"),
+            "error should mention the length or limit: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_path_accepts_key_at_limit() {
+        let key_at_limit = "a".repeat(256);
+        assert!(parse_path(&key_at_limit).is_ok());
     }
 }

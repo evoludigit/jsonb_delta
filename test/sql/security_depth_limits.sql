@@ -45,3 +45,35 @@ SELECT jsonb_delta_set_path(
     '1'::jsonb
 );
 -- Expected: ERROR containing "Array index"
+
+-- Test 7: Empty match_key rejected
+DO $$
+BEGIN
+    PERFORM jsonb_array_update_where(
+        '{"items": [{"id": 1}]}'::jsonb,
+        'items',
+        '',                  -- empty match_key
+        '1'::jsonb,
+        '{"updated": true}'::jsonb
+    );
+    RAISE EXCEPTION 'Expected error but got none';
+EXCEPTION WHEN OTHERS THEN
+    IF sqlerrm NOT LIKE '%empty%' THEN
+        RAISE EXCEPTION 'Unexpected error: %', sqlerrm;
+    END IF;
+END $$;
+SELECT 'test_empty_match_key_rejected' AS passed;
+
+-- Test 8: Long key segment rejected
+DO $$
+DECLARE
+    long_path text := repeat('a', 257) || '.b';
+BEGIN
+    PERFORM jsonb_delta_set_path('{}'::jsonb, long_path, '1'::jsonb);
+    RAISE EXCEPTION 'Expected error but got none';
+EXCEPTION WHEN OTHERS THEN
+    IF sqlerrm NOT LIKE '%exceeds%' AND sqlerrm NOT LIKE '%256%' THEN
+        RAISE EXCEPTION 'Unexpected error: %', sqlerrm;
+    END IF;
+END $$;
+SELECT 'test_long_key_segment_rejected' AS passed;

@@ -7,7 +7,7 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:174
+-- src/lib.rs:177
 -- jsonb_delta::jsonb_array_contains_id
 CREATE  FUNCTION "jsonb_array_contains_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
@@ -21,7 +21,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_contains_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:320
+-- src/array_ops.rs:340
 -- jsonb_delta::array_ops::jsonb_array_delete_where
 CREATE  FUNCTION "jsonb_array_delete_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -35,7 +35,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_delete_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:410
+-- src/array_ops.rs:432
 -- jsonb_delta::array_ops::jsonb_array_insert_where
 CREATE  FUNCTION "jsonb_array_insert_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -50,7 +50,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_insert_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:234
+-- src/array_ops.rs:251
 -- jsonb_delta::array_ops::jsonb_array_update_multi_row
 CREATE  FUNCTION "jsonb_array_update_multi_row"(
 	"targets" jsonb[], /* pgrx::datum::array::Array<'_, pgrx::datum::json::JsonB> */
@@ -67,7 +67,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_multi_row_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:48
+-- src/array_ops.rs:61
 -- jsonb_delta::array_ops::jsonb_array_update_where
 CREATE  FUNCTION "jsonb_array_update_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -82,7 +82,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:128
+-- src/array_ops.rs:143
 -- jsonb_delta::array_ops::jsonb_array_update_where_batch
 CREATE  FUNCTION "jsonb_array_update_where_batch"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -108,7 +108,7 @@ AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:229
+-- src/lib.rs:238
 -- jsonb_delta::jsonb_delta_array_update_where_path
 CREATE  FUNCTION "jsonb_delta_array_update_where_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -124,7 +124,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_array_update_where_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:339
+-- src/lib.rs:352
 -- jsonb_delta::jsonb_delta_set_path
 CREATE  FUNCTION "jsonb_delta_set_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -137,7 +137,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_set_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:97
+-- src/lib.rs:100
 -- jsonb_delta::jsonb_extract_id
 CREATE  FUNCTION "jsonb_extract_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */

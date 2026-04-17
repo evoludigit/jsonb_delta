@@ -79,7 +79,16 @@ SELECT jsonb_merge_shallow(
 );
 
 -- Test 12: Type validation - array should error
-SELECT jsonb_merge_shallow(
-    '[1,2,3]'::jsonb,
-    '{"a": 1}'::jsonb
-);
+DO $$
+BEGIN
+    PERFORM jsonb_merge_shallow(
+        '[1,2,3]'::jsonb,
+        '{"a": 1}'::jsonb
+    );
+    RAISE EXCEPTION 'Expected error but got none';
+EXCEPTION WHEN OTHERS THEN
+    IF sqlerrm NOT LIKE '%must be a JSONB object%' THEN
+        RAISE EXCEPTION 'Unexpected error: %', sqlerrm;
+    END IF;
+END $$;
+SELECT 'test_array_target_rejected' AS passed;

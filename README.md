@@ -19,6 +19,49 @@ A PostgreSQL extension providing fast, targeted update primitives for JSONB docu
 
 ---
 
+## 🍓 Part of the FraiseQL Ecosystem
+
+**jsonb_delta** powers CQRS projection updates across the FraiseQL stack:
+
+### **Server Stack (PostgreSQL + Python/Rust)**
+
+| Tool | Purpose | Status | Performance Gain |
+|------|---------|--------|------------------|
+| **[pg_tviews](https://github.com/fraiseql/pg_tviews)** | Incremental materialized views | Beta | **100-500× faster** |
+| **[jsonb_delta](https://github.com/evoludigit/jsonb_delta)** | JSONB surgical updates | **Stable** ⭐ | **2-7× faster** |
+| **[pgGit](https://pggit.dev)** | Database version control | Stable | Git for databases |
+| **[confiture](https://github.com/fraiseql/confiture)** | PostgreSQL migrations | Stable | **300-600× faster** |
+| **[fraiseql](https://fraiseql.dev)** | GraphQL framework | Stable | **7-10× faster** |
+| **[fraiseql-data](https://github.com/fraiseql/fraiseql-seed)** | Seed data generation | Phase 6 | Auto-dependency resolution |
+
+### **Client Libraries (TypeScript/JavaScript)**
+
+| Library | Purpose | Framework Support |
+|---------|---------|-------------------|
+| **[graphql-cascade](https://github.com/graphql-cascade/graphql-cascade)** | Automatic cache invalidation | Apollo, React Query, Relay, URQL |
+
+**How jsonb_delta fits:**
+- **pg_tviews** uses jsonb_delta for 1.5-3× faster JSONB updates
+- **fraiseql** GraphQL mutations update JSONB projections surgically
+- **graphql-cascade** (client-side) handles browser cache invalidation
+
+**CQRS workflow:**
+```sql
+-- Update source table
+UPDATE tb_order SET status = 'shipped' WHERE id = 'ORD-123';
+
+-- jsonb_delta surgically updates denormalized view (2.9× faster)
+UPDATE customer_projections
+SET data = jsonb_delta_array_update_where_path(
+    data,
+    'orders', 'id', 'ORD-123'::jsonb,
+    'status', '"shipped"'::jsonb
+)
+WHERE customer_id = 'CUST-456';
+```
+
+---
+
 ## Why jsonb_delta?
 
 PostgreSQL has excellent native JSONB functions (`jsonb_set`, `||`, `jsonb_agg`, etc.), but they fall short in CQRS/event sourcing architectures where you need to **surgically update denormalized projections**.

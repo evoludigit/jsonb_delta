@@ -1,5 +1,4 @@
 -- Test jsonb_smart_patch_* functions
--- Phase 1 implementation test
 
 -- ===== SCALAR UPDATES =====
 

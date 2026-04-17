@@ -3,7 +3,7 @@
 // High-performance JSONB array manipulation functions for delta operations.
 // Supports update, delete, insert operations with optimized search and sorting.
 //
-// Part of Phase 0: Code Modularization
+// Array operations for JSONB delta updates
 
 use pgrx::prelude::*;
 use pgrx::JsonB;
@@ -11,7 +11,20 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 // Import from other modules
-use crate::search::find_by_int_id_optimized;
+use crate::find_element_by_match;
+use crate::value_type_name;
+
+/// Validate that `match_key` is non-empty.
+///
+/// # Errors
+/// Returns `Err` if `key` is an empty string.
+pub(crate) fn validate_match_key(key: &str) -> Result<(), String> {
+    if key.is_empty() {
+        Err("match_key must not be empty".into())
+    } else {
+        Ok(())
+    }
+}
 
 /// Update a single element in a JSONB array by matching a key-value predicate
 ///
@@ -55,6 +68,8 @@ pub fn jsonb_array_update_where(
 ) -> JsonB {
     // No Option unwrapping needed - strict guarantees non-NULL
     let mut target_value: Value = target.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
 
     // Navigate to array location (single level for now)
     let Some(array) = target_value.get_mut(array_path) else {
@@ -133,6 +148,8 @@ pub fn jsonb_array_update_where_batch(
     updates_array: JsonB,
 ) -> JsonB {
     let mut target_value: Value = target.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
 
     let Some(array) = target_value.get_mut(array_path) else {
         error!("Path '{}' does not exist in document", array_path)
@@ -240,6 +257,9 @@ pub fn jsonb_array_update_multi_row(
     updates: JsonB,
 ) -> TableIterator<'static, (name!(result, JsonB),)> {
     let match_val = match_value.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+
     let Some(updates_obj) = updates.0.as_object() else {
         error!("updates argument must be a JSONB object")
     };
@@ -326,6 +346,8 @@ pub fn jsonb_array_delete_where(
     match_value: JsonB,
 ) -> JsonB {
     let mut target_value: Value = target.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
 
     // Navigate to array location
     let Some(array) = target_value.get_mut(array_path) else {
@@ -452,7 +474,17 @@ pub fn jsonb_array_insert_where(
     JsonB(target_value)
 }
 
-/// Find the insertion point to maintain sort order
+/// Find the insertion index to maintain sort order in a sorted array.
+///
+/// Uses binary search (`partition_point`) for O(log n) performance.
+///
+/// # Precondition
+/// The array must already be sorted by `sort_key` in the given `sort_order`.
+/// Calling this on an unsorted array returns an arbitrary but consistent index —
+/// no worse than the previous linear implementation on unsorted data.
+///
+/// # Returns
+/// Index at which `new_val` should be inserted so the array remains sorted.
 #[inline]
 #[must_use]
 pub fn find_insertion_point(
@@ -462,24 +494,25 @@ pub fn find_insertion_point(
     sort_order: &str,
 ) -> usize {
     let Some(new_val) = new_val else {
-        return array.len();
-    }; // No sort value, insert at end
+        return array.len(); // No sort value → append
+    };
 
-    array
-        .iter()
-        .position(|elem| {
-            let Some(elem_val) = elem.get(sort_key) else {
-                return false;
-            }; // Element has no sort key, continue searching
+    let is_asc = sort_order.eq_ignore_ascii_case("ASC");
 
-            // Compare values based on sort order
-            if sort_order.eq_ignore_ascii_case("ASC") {
-                compare_values(new_val, elem_val) == std::cmp::Ordering::Less
-            } else {
-                compare_values(new_val, elem_val) == std::cmp::Ordering::Greater
-            }
-        })
-        .unwrap_or(array.len())
+    // partition_point returns the first index where the predicate is false.
+    // For ASC: predicate is true while elem_val < new_val (keep scanning).
+    // For DESC: predicate is true while elem_val > new_val (keep scanning).
+    array.partition_point(|elem| {
+        let Some(elem_val) = elem.get(sort_key) else {
+            return true; // Elements without the sort key sort before keyed elements
+        };
+        let ord = compare_values(elem_val, new_val);
+        if is_asc {
+            ord == std::cmp::Ordering::Less
+        } else {
+            ord == std::cmp::Ordering::Greater
+        }
+    })
 }
 
 /// Compare two JSON values for ordering
@@ -517,29 +550,56 @@ pub fn compare_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     }
 }
 
-// Helper function - will be moved to search module later
-fn find_element_by_match(array: &[Value], match_key: &str, match_value: &Value) -> Option<usize> {
-    // Try optimized search for integer IDs first
-    if let Some(int_val) = match_value.as_i64() {
-        if let Some(idx) = find_by_int_id_optimized(array, match_key, int_val) {
-            return Some(idx);
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_match_key_empty() {
+        let err = validate_match_key("").unwrap_err();
+        assert!(err.contains("empty"), "error should mention 'empty'");
     }
 
-    // Fallback to generic search
-    array
-        .iter()
-        .position(|elem| elem.get(match_key) == Some(match_value))
-}
+    #[test]
+    fn test_validate_match_key_valid() {
+        assert!(validate_match_key("id").is_ok());
+        assert!(validate_match_key("user_id").is_ok());
+    }
 
-// Helper function
-const fn value_type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
+    #[test]
+    fn test_binary_search_insertion_correctness() {
+        use serde_json::json;
+
+        // 5-element sorted array
+        let arr: Vec<Value> = vec![
+            json!({"id": 1}),
+            json!({"id": 3}),
+            json!({"id": 5}),
+            json!({"id": 7}),
+            json!({"id": 9}),
+        ];
+
+        // Insert 4 → should go between index 1 (id=3) and index 2 (id=5)
+        let pos = crate::array_ops::find_insertion_point(&arr, Some(&json!(4)), "id", "ASC");
+        assert_eq!(pos, 2, "4 should insert at index 2");
+
+        // Insert 0 → should go at the front
+        let pos = crate::array_ops::find_insertion_point(&arr, Some(&json!(0)), "id", "ASC");
+        assert_eq!(pos, 0, "0 should insert at index 0");
+
+        // Insert 10 → should go at the end
+        let pos = crate::array_ops::find_insertion_point(&arr, Some(&json!(10)), "id", "ASC");
+        assert_eq!(pos, 5, "10 should insert at end");
+
+        // DESC: insert 4 → array [9,7,5,3,1], 4 should go between 5 (idx 2) and 3 (idx 3)
+        let arr_desc: Vec<Value> = vec![
+            json!({"id": 9}),
+            json!({"id": 7}),
+            json!({"id": 5}),
+            json!({"id": 3}),
+            json!({"id": 1}),
+        ];
+        let pos = crate::array_ops::find_insertion_point(&arr_desc, Some(&json!(4)), "id", "DESC");
+        assert_eq!(pos, 3, "4 DESC should insert at index 3");
     }
 }

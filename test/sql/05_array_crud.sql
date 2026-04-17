@@ -1,5 +1,4 @@
 -- Test jsonb_array_delete_where and jsonb_array_insert_where
--- Phase 2 implementation test
 
 -- ===== DELETE TESTS =====
 

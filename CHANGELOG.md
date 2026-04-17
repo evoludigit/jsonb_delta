@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Added array index cap (`MAX_JSONB_ARRAY_SIZE = 100,000`) to prevent OOM attacks via large index padding in `jsonb_delta_set_path` and `jsonb_delta_array_update_where_path`.
+- Added `match_key` non-empty validation to all 7 array-matching functions.
+- Added path key-segment length cap (`MAX_KEY_LENGTH = 256`) in `parse_path()`.
+
+### Performance
+- `find_insertion_point()` now uses binary search (`partition_point`) for O(log n) complexity, down from O(n).
+
+### Fixed
+- Depth validation error now reports the actual depth found, not just `>max`.
+
 ### Changed
 - Simplified GitHub Actions CI workflow (removed macOS, platform detection logic)
 - Expanded PostgreSQL test matrix from PG17 only to PG13-17

@@ -3,7 +3,7 @@
 // Security module for preventing stack overflow attacks via deeply nested JSONB.
 // Implements configurable depth limits with clear error messages.
 //
-// Part of Phase 1: Security Hardening
+// Security module for preventing stack overflow attacks via deeply nested JSONB
 
 use serde_json::Value;
 
@@ -48,7 +48,9 @@ pub fn validate_array_index(idx: usize, max: usize) -> Result<(), String> {
 pub fn validate_depth(val: &Value, max_depth: usize) -> Result<(), String> {
     fn check_depth(val: &Value, current: usize, max: usize) -> Result<usize, String> {
         if current > max {
-            return Err(format!("JSONB nesting too deep (max {max}, found >{max})"));
+            return Err(format!(
+                "JSONB nesting too deep (max {max}, found depth {current})"
+            ));
         }
         match val {
             Value::Object(map) => {
@@ -138,6 +140,11 @@ mod tests {
         let err_msg = result.unwrap_err();
         assert!(err_msg.contains("JSONB nesting too deep"));
         assert!(err_msg.contains("max 1000"));
+        // NEW: assert the actual depth appears in the message
+        assert!(
+            err_msg.contains("1001") || err_msg.contains("found depth"),
+            "error should report the actual depth, got: {err_msg}"
+        );
     }
 
     #[test]

@@ -2,15 +2,15 @@
 //
 // High-performance JSONB merge operations for delta and patch operations.
 // Supports shallow, deep, and path-based merging with optimized recursion.
-//
-// Part of Phase 0: Code Modularization
 
 use pgrx::prelude::*;
 use pgrx::JsonB;
 use serde_json::Value;
 
 // Import from other modules
-use crate::search::find_by_int_id_optimized;
+use crate::array_ops::validate_match_key;
+use crate::find_element_by_match;
+use crate::value_type_name;
 
 /// Merge top-level keys from source JSONB into target JSONB
 ///
@@ -308,9 +308,9 @@ pub fn jsonb_smart_patch_array(
     match_key: &str,
     match_value: JsonB,
 ) -> JsonB {
-    // This will be moved to array_ops module, but for now we need to implement it here
-    // since it depends on jsonb_array_update_where which we'll move later
     let mut target_value: Value = target.0;
+
+    validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
 
     // Navigate to array location (single level for now)
     let Some(array) = target_value.get_mut(array_path) else {
@@ -425,31 +425,4 @@ pub fn deep_merge_recursive(target: Value, source: Value) -> Value {
         // If not both objects, source wins (replaces target)
         (_, source) => source,
     }
-}
-
-// Helper function - will be moved to a common utils module later
-const fn value_type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
-// Helper function - will be moved to search module later
-fn find_element_by_match(array: &[Value], match_key: &str, match_value: &Value) -> Option<usize> {
-    // Try optimized search for integer IDs first
-    if let Some(int_val) = match_value.as_i64() {
-        if let Some(idx) = find_by_int_id_optimized(array, match_key, int_val) {
-            return Some(idx);
-        }
-    }
-
-    // Fallback to generic search
-    array
-        .iter()
-        .position(|elem| elem.get(match_key) == Some(match_value))
 }

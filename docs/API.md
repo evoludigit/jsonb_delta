@@ -534,6 +534,20 @@ SELECT jsonb_merge_shallow('"not an object"'::jsonb, '{}'::jsonb);
 -- ERROR: target argument must be a JSONB object, got String
 ```
 
+## Security & Limits
+
+### Array Size Cap
+Array indices used in path operations (`jsonb_delta_set_path`, `jsonb_delta_array_update_where_path`) are capped at **100,000**. Requests for larger indices return an error: `Array index N exceeds maximum allowed size 100000`.
+
+### Path Key Length
+Individual key segments in dot-notation paths are capped at **256 bytes**. Longer segments return an error: `Invalid path: key segment exceeds maximum allowed length 256`.
+
+### Nesting Depth
+JSONB documents passed to all functions are validated against a maximum nesting depth of **1,000 levels**. Deeper documents return an error: `JSONB nesting too deep (max 1000, found depth N)`.
+
+### Non-empty `match_key`
+All array-matching functions (`jsonb_array_update_where`, `jsonb_array_delete_where`, etc.) require a non-empty `match_key`. Passing an empty string returns an error: `match_key must not be empty`.
+
 ## See Also
 
 - [PERFORMANCE.md](./PERFORMANCE.md) - Detailed performance benchmarks

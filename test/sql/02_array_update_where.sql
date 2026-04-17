@@ -73,4 +73,50 @@ SELECT jsonb_array_update_where(
 ) IS NULL
 AS test_null_handling;
 
+-- Batch update: 3 updates in a single call
+SELECT
+    jsonb_array_update_where_batch(
+        '{"items": [{"id":1,"v":0}, {"id":2,"v":0}, {"id":3,"v":0}]}'::jsonb,
+        'items',
+        'id',
+        '[{"match_value": 1, "updates": {"v": 10}},
+          {"match_value": 2, "updates": {"v": 20}},
+          {"match_value": 3, "updates": {"v": 30}}]'::jsonb
+    ) = '{"items": [{"id":1,"v":10}, {"id":2,"v":20}, {"id":3,"v":30}]}'::jsonb
+    AS test_batch_update_three_elements;
+
+-- Batch update: no matches returns document unchanged
+SELECT
+    jsonb_array_update_where_batch(
+        '{"items": [{"id":1,"v":0}]}'::jsonb,
+        'items',
+        'id',
+        '[{"match_value": 99, "updates": {"v": 99}}]'::jsonb
+    ) = '{"items": [{"id":1,"v":0}]}'::jsonb
+    AS test_batch_update_no_matches_unchanged;
+
+-- Multi-row update: basic functionality test
+SELECT (SELECT COUNT(*) FROM jsonb_array_update_multi_row(
+    ARRAY[
+        '{"items":[{"id":1,"v":0}]}'::jsonb,
+        '{"items":[{"id":2,"v":0}]}'::jsonb,
+        '{"items":[{"id":3,"v":0}]}'::jsonb
+    ],
+    'items',
+    'id',
+    '1'::jsonb,
+    '{"v":10}'::jsonb
+) AS t(result)) = 3
+AS test_multi_row_update_basic;
+
+-- Multi-row update: empty document array
+SELECT (SELECT COUNT(*) FROM jsonb_array_update_multi_row(
+    ARRAY[]::jsonb[],
+    'items',
+    'id',
+    '1'::jsonb,
+    '{"v":10}'::jsonb
+) AS t(result)) = 0
+AS test_multi_row_update_empty;
+
 \echo 'All tests should return TRUE'

@@ -1,5 +1,4 @@
 -- Test jsonb_deep_merge function
--- Phase 3: Deep Merge & Helpers
 
 \set ECHO all
 \set ON_ERROR_STOP on

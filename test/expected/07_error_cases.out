@@ -1,0 +1,88 @@
+CREATE EXTENSION
+DO
+               passed
+-------------------------------------
+ test_01_merge_shallow_rejects_array
+(1 row)
+
+DO
+                passed
+--------------------------------------
+ test_02_merge_shallow_rejects_scalar
+(1 row)
+
+DO
+                passed
+---------------------------------------
+ test_03_array_update_nonexistent_path
+(1 row)
+
+DO
+               passed
+-------------------------------------
+ test_04_array_update_path_not_array
+(1 row)
+
+DO
+                 passed
+-----------------------------------------
+ test_05_array_update_non_object_updates
+(1 row)
+
+DO
+                 passed
+----------------------------------------
+ test_06_merge_at_path_non_object_patch
+(1 row)
+
+DO
+                 passed
+-----------------------------------------
+ test_07_merge_at_path_target_not_object
+(1 row)
+
+ test_08_deep_merge_replaces_scalar
+------------------------------------
+ t
+(1 row)
+
+DO
+                 passed
+----------------------------------------
+ test_09_array_insert_non_object_target
+(1 row)
+
+DO
+               passed
+-------------------------------------
+ test_10_array_insert_path_not_array
+(1 row)
+
+DO
+           passed
+-----------------------------
+ test_11_set_path_empty_path
+(1 row)
+
+DO
+             passed
+---------------------------------
+ test_12_set_path_invalid_syntax
+(1 row)
+
+DO
+                    passed
+-----------------------------------------------
+ test_13_array_update_where_path_missing_array
+(1 row)
+
+ test_14_extract_id_non_object_returns_null
+--------------------------------------------
+ t
+(1 row)
+
+ test_15_contains_id_non_object_elements
+-----------------------------------------
+ t
+(1 row)
+
