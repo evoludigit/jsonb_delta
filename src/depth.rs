@@ -10,6 +10,26 @@ use serde_json::Value;
 /// Maximum allowed JSONB nesting depth to prevent stack overflow attacks
 pub const MAX_JSONB_DEPTH: usize = 1000;
 
+/// Maximum number of elements allowed in a single JSONB array.
+/// Prevents OOM attacks via large index padding (e.g., arr[999999999]).
+#[allow(dead_code)]
+pub const MAX_JSONB_ARRAY_SIZE: usize = 100_000;
+
+/// Return `Err` if `idx` would require padding an array beyond `max` elements.
+///
+/// # Errors
+/// Returns an error string if `idx >= max`.
+#[allow(dead_code)]
+pub fn validate_array_index(idx: usize, max: usize) -> Result<(), String> {
+    if idx >= max {
+        Err(format!(
+            "Array index {idx} exceeds maximum allowed size {max}"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 /// Validate that a JSONB value does not exceed maximum nesting depth
 ///
 /// Recursively traverses the JSONB structure counting nesting levels.
@@ -141,5 +161,17 @@ mod tests {
         // Should be exactly at the limit
         assert_eq!(get_max_depth(&deep), MAX_JSONB_DEPTH);
         assert!(validate_depth(&deep, MAX_JSONB_DEPTH).is_ok());
+    }
+
+    #[test]
+    fn test_array_index_within_limit() {
+        assert!(validate_array_index(99_999, MAX_JSONB_ARRAY_SIZE).is_ok());
+    }
+
+    #[test]
+    fn test_array_index_exceeds_limit() {
+        let err = validate_array_index(100_000, MAX_JSONB_ARRAY_SIZE).unwrap_err();
+        assert!(err.contains("100000"), "error should contain the bad index");
+        assert!(err.contains("100000"), "error should contain the limit");
     }
 }
