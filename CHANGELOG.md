@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2024-04-17
 
 ### Security
 - **Array Bounds Protection**: Added array index cap (`MAX_JSONB_ARRAY_SIZE = 100,000`) to prevent OOM attacks via large index padding in `jsonb_delta_set_path` and `jsonb_delta_array_update_where_path`.
@@ -51,5 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Idempotent patch application
 - Round-trip guarantee: patch(original, delta(original, modified)) = modified
 
-[Unreleased]: https://github.com/evoludigit/jsonb_delta/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/evoludigit/jsonb_delta/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/evoludigit/jsonb_delta/releases/tag/v0.2.0
 [0.1.0]: https://github.com/evoludigit/jsonb_delta/releases/tag/v0.1.0
