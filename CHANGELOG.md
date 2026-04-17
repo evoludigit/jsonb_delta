@@ -8,15 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- Added array index cap (`MAX_JSONB_ARRAY_SIZE = 100,000`) to prevent OOM attacks via large index padding in `jsonb_delta_set_path` and `jsonb_delta_array_update_where_path`.
-- Added `match_key` non-empty validation to all 7 array-matching functions.
-- Added path key-segment length cap (`MAX_KEY_LENGTH = 256`) in `parse_path()`.
+- **Array Bounds Protection**: Added array index cap (`MAX_JSONB_ARRAY_SIZE = 100,000`) to prevent OOM attacks via large index padding in `jsonb_delta_set_path` and `jsonb_delta_array_update_where_path`.
+- **Input Validation**: Added `match_key` non-empty validation to all 7 array-matching functions (`jsonb_array_update_where`, `jsonb_array_delete_where`, `jsonb_array_insert_where`, `jsonb_array_update_where_batch`, `jsonb_array_update_multi_row`, `jsonb_smart_patch_array`, `jsonb_delta_array_update_where_path`).
+- **Path Security**: Added path key-segment length cap (`MAX_KEY_LENGTH = 256` bytes) in `parse_path()` to prevent unbounded memory allocation.
+- **Depth Protection**: Added JSONB nesting depth validation (max 1,000 levels) to prevent stack overflow attacks.
 
 ### Performance
-- `find_insertion_point()` now uses binary search (`partition_point`) for O(log n) complexity, down from O(n).
+- **Binary Search Optimization**: `find_insertion_point()` now uses binary search (`partition_point`) for O(log n) complexity down from O(n), significantly improving sorted array insertions.
+- **SIMD Integer Matching**: Leverages auto-vectorization for integer ID lookups, optimized for the trinity pattern (`id` UUID / `pk_{entity}` BIGINT / `fk_{entity}` BIGINT / `identifier` text).
+- **Helper Consolidation**: Removed duplicate code paths, reducing compilation overhead and improving maintainability.
+
+### Developer Experience
+- **Comprehensive Testing**: Added 34 unit tests, property-based fuzzing, and SQL integration tests covering all functions and edge cases.
+- **Error Messages**: Improved error messages with specific values (actual depth found, key lengths, etc.) for better debugging.
+- **Documentation**: Added detailed API documentation with security limits and usage examples.
 
 ### Fixed
-- Depth validation error now reports the actual depth found, not just `>max`.
+- Depth validation error now reports the actual depth found instead of generic `>max`.
+- Consolidated duplicate helper functions (`value_type_name`, `find_element_by_match`) across modules.
 
 ### Changed
 - Simplified GitHub Actions CI workflow (removed macOS, platform detection logic)
