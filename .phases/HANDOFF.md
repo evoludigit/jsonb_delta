@@ -10,7 +10,7 @@ work can be picked up without repeating them.
 |---|---|---|
 | 1 — benchmark reproducibility | #13 | **Done.** 9/9 benchmark scripts run clean via `test/benchmark_smoke.sh`. |
 | 2 — version coherence | #14 | Not started. Blocked on a pgrx decision, see below. |
-| 3 — `jsonb_smart_patch_array` compat | #12 | Cycle 1 ready; **Cycles 2–3 blocked** on `fraiseql/pg_tviews#50` confirming semantics. Do not guess them. |
+| 3 — `jsonb_smart_patch_array` compat | #12 | **Cycle 1 done** — signature contract test (`src/contract.rs`), pins all 15 exports; verified it fails on the #12 drift. **Cycles 2–3 blocked** on `fraiseql/pg_tviews#50` confirming semantics. Do not guess them. |
 | 4 — re-measure performance claims | #15 | **Cycle 1 done** (harness built and calibrated). Cycles 2–5 open. |
 | 5 — finalize | — | Not started. |
 
