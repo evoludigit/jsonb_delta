@@ -66,19 +66,31 @@ jobs:
       - name: Install extension
         run: cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release --sudo
 
+      - name: Grant the runner a superuser role
+        run: |
+          PG_PORT=$(sudo pg_lsclusters -h | grep "^17 main" | awk '{print $3}')
+          echo "PGPORT=$PG_PORT" >> "$GITHUB_ENV"
+          sudo -u postgres psql -p "$PG_PORT" \
+            -c "CREATE ROLE $(whoami) LOGIN SUPERUSER;" || true
+
+      # Exit-status gate over the whole suite. Previously this workflow ran only
+      # benchmark_pg_tview_helpers.sql — the single self-contained script — and
+      # created the extension itself, so it stayed green while every other
+      # benchmark was unrunnable. Smoke-test everything so that cannot recur.
+      - name: Smoke-test the benchmark suite
+        run: ./test/benchmark_smoke.sh
+
       - name: Run benchmarks
         run: |
-          # Get the port for PostgreSQL 17
-          PG_PORT=$(sudo pg_lsclusters -h | grep "^17 main" | awk '{print $3}')
-          echo "Using PostgreSQL on port $PG_PORT"
+          dropdb --if-exists test_jsonb_delta
+          createdb test_jsonb_delta
+          psql -v ON_ERROR_STOP=1 -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
+          psql -v ON_ERROR_STOP=1 -d test_jsonb_delta -f test/fixtures/setup_benchmark_env.sql
 
-          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true
-          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_delta;"
-          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta -c "CREATE EXTENSION jsonb_delta;"
-
-          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta \
-            -f test/benchmark_pg_tview_helpers.sql \
-            > benchmark_results.txt 2>&1
+          for f in test/benchmark_*.sql; do
+            echo "=== $(basename "$f") ==="
+            psql -v ON_ERROR_STOP=1 -d test_jsonb_delta -f "$f"
+          done > benchmark_results.txt 2>&1
 
       - name: Parse benchmark results
         run: |

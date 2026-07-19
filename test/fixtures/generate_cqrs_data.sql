@@ -4,7 +4,10 @@
 CREATE OR REPLACE FUNCTION generate_cqrs_test_data()
 RETURNS void AS $$
 BEGIN
-    -- Drop existing test tables
+    -- Drop existing test tables (every table this function creates, so it is re-runnable)
+    DROP TABLE IF EXISTS tv_allocation CASCADE;
+    DROP TABLE IF EXISTS tv_network_configuration CASCADE;
+    DROP TABLE IF EXISTS v_dns_server CASCADE;
     DROP TABLE IF EXISTS bench_dns_servers CASCADE;
     DROP TABLE IF EXISTS bench_network_configs CASCADE;
     DROP TABLE IF EXISTS bench_allocations CASCADE;

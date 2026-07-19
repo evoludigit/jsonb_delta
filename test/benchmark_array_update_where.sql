@@ -1,10 +1,7 @@
 -- Benchmark: jsonb_array_update_where vs native SQL equivalent
 -- Goal: Demonstrate >3x improvement on 50-element arrays
 
-\timing on
-\set ON_ERROR_STOP on
-
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'BENCHMARK: jsonb_array_update_where'
@@ -15,57 +12,57 @@ CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'test_tv_network_configuration') THEN
-        RAISE EXCEPTION 'Test data not found. Run generate_cqrs_data.sql first.';
+        RAISE EXCEPTION 'Benchmark fixtures not found. Run: psql -f test/fixtures/setup_benchmark_env.sql (or just bench)';
     END IF;
 END $$;
 
 -- ============================================================================
--- Benchmark 1: Single element update in 50-element array
+-- Benchmark 1: Single element update in a 50-element array
+--
+-- Driven by test/bench/harness.sql: warm-up, then N measured trials each in a
+-- rolled-back subtransaction, reported as median and p95. The two arms are
+-- checked for byte-identical output first, and no ratio is reported if they
+-- disagree.
+--
+-- This previously ran a single `EXPLAIN ANALYZE` per arm under a header reading
+-- "1000 iterations". One sample of a noisy variable is not a measurement, and
+-- the numbers published from it should not be trusted (issue #15).
 -- ============================================================================
 
-\echo '=== Benchmark 1: Update 1 element in 50-element array (1000 iterations) ==='
+\i test/bench/harness.sql
+
+\echo '=== Benchmark 1: Update 1 element in 50-element array ==='
 \echo ''
 
--- NATIVE APPROACH (baseline)
-\echo '--- Native SQL (re-aggregate array with CASE) ---'
-BEGIN;
-EXPLAIN ANALYZE
-WITH updated AS (
-    SELECT
-        id,
-        (
-            SELECT jsonb_agg(
-                CASE
-                    WHEN elem->>'id' = '42'
-                    THEN elem || '{"ip": "8.8.8.8"}'::jsonb
-                    ELSE elem
-                END
-            )
-            FROM jsonb_array_elements(data->'dns_servers') AS elem
-        ) AS updated_array
-            FROM test_tv_network_configuration
-            WHERE id = 1
-)
-UPDATE test_tv_network_configuration
-SET data = jsonb_set(data, '{dns_servers}', updated_array)
-FROM updated
-WHERE test_tv_network_configuration.id = updated.id;
-ROLLBACK;
+SELECT bench.define(
+    name        => 'array_update_where_50',
+    description => 'Update one element of a 50-element dns_servers array, stored table',
+    setup_sql   => $$UPDATE test_tv_network_configuration t
+                     SET data = s.data FROM tv_network_configuration s
+                     WHERE s.id = t.id AND t.id = 1$$,
+    native_sql  => $$UPDATE test_tv_network_configuration
+                     SET data = jsonb_set(data, '{dns_servers}', (
+                         SELECT jsonb_agg(CASE WHEN elem->>'id' = '42'
+                                               THEN elem || '{"ip": "8.8.8.8"}'::jsonb
+                                               ELSE elem END)
+                         FROM jsonb_array_elements(data->'dns_servers') AS elem))
+                     WHERE id = 1$$,
+    delta_sql   => $$UPDATE test_tv_network_configuration
+                     SET data = jsonb_array_update_where(
+                         data, 'dns_servers', 'id', '42'::jsonb,
+                         '{"ip": "8.8.8.8"}'::jsonb)
+                     WHERE id = 1$$,
+    verify_sql  => $$SELECT md5(data::text) FROM test_tv_network_configuration WHERE id = 1$$,
+    n_trials    => 25,
+    n_warmup    => 5
+);
 
-\echo ''
-\echo '--- Custom Rust function ---'
-BEGIN;
-EXPLAIN ANALYZE
-UPDATE test_tv_network_configuration
-SET data = jsonb_array_update_where(
-    data,
-    'dns_servers',
-    'id',
-    '42'::jsonb,
-    '{"ip": "8.8.8.8"}'::jsonb
-)
-WHERE id = 1;
-ROLLBACK;
+DO $run$ BEGIN PERFORM bench.run('array_update_where_50'); END $run$;
+
+SELECT scenario, n, native_median_ms, native_p95_ms,
+       delta_median_ms, delta_p95_ms, speedup, verdict
+FROM bench.report
+WHERE scenario = 'array_update_where_50';
 
 -- ============================================================================
 -- Benchmark 2: Update propagation in CQRS cascade
@@ -234,9 +231,9 @@ END $$;
 \echo 'Benchmark Complete'
 \echo '========================================'
 \echo ''
-\echo 'Expected Results:'
-\echo '  - Benchmark 1 (single update): Rust 2-3x faster'
-\echo '  - Benchmark 2 (cascade): Rust 3-5x faster'
-\echo '  - Benchmark 3 (stress): Rust 5-10x faster'
+\echo 'Benchmark 1 is harness-driven: median/p95 over 25 verified trials.'
+\echo 'Benchmarks 2 and 3 are still single-shot wall-clock timings and are'
+\echo 'indicative only -- do not publish numbers from them (issue #15).'
 \echo ''
-\echo 'If Rust is <1.5x faster, reconsider approach.'
+\echo 'Timings taken on a developer machine are not publishable regardless:'
+\echo 'only ratios measured on the recorded machine profile are reportable.'

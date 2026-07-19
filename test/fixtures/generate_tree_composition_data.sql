@@ -10,7 +10,8 @@ BEGIN
     DROP TABLE IF EXISTS bench_tree_addresses CASCADE;
     DROP TABLE IF EXISTS bench_tree_billing CASCADE;
     DROP TABLE IF EXISTS bench_tree_preferences CASCADE;
-    DROP MATERIALIZED VIEW IF EXISTS v_tree_user_profile CASCADE;
+    -- v_tree_user_profile is created as a TABLE below, not a materialized view
+    DROP TABLE IF EXISTS v_tree_user_profile CASCADE;
 
     -- Base table: Users (1000 records)
     CREATE TABLE bench_tree_users (

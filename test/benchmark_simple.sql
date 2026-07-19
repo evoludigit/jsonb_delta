@@ -1,8 +1,6 @@
 -- Simple performance benchmarks for jsonb_merge_shallow()
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
-
-\timing on
+\i test/fixtures/preamble.sql
 
 -- Benchmark 1: Small objects (10 keys) - 10,000 merges
 \echo '\n=== Benchmark 1: Small objects (10 keys) - 10,000 merges ==='

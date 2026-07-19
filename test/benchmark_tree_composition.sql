@@ -1,10 +1,7 @@
 -- Benchmark: Deep JSONB tree updates (non-array composition)
 -- Compare jsonb_merge_at_path vs native jsonb_set for nested object updates
 
-\timing on
-\set ON_ERROR_STOP on
-
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'BENCHMARK: Deep JSONB Tree Composition'
@@ -15,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'v_tree_user_profile') THEN
-        RAISE EXCEPTION 'Tree composition test data not found. Run generate_tree_composition_data.sql first.';
+        RAISE EXCEPTION 'Benchmark fixtures not found. Run: psql -f test/fixtures/setup_benchmark_env.sql (or just bench)';
     END IF;
 END $$;
 
@@ -205,8 +202,11 @@ ROLLBACK;
 \echo ''
 
 -- Create aggregated report view (top-level projection)
-DROP MATERIALIZED VIEW IF EXISTS v_tree_user_report CASCADE;
-CREATE MATERIALIZED VIEW v_tree_user_report AS
+-- A plain table, not a materialized view: the cascade benchmark below UPDATEs it
+-- to simulate a denormalized projection, which a materialized view cannot accept.
+-- This mirrors how v_tree_user_profile is built in the fixtures.
+DROP TABLE IF EXISTS v_tree_user_report CASCADE;
+CREATE TABLE v_tree_user_report AS
 SELECT
     id,
     jsonb_build_object(

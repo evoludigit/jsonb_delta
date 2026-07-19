@@ -1,7 +1,7 @@
 -- End-to-end benchmark: Complete CQRS cascade with custom operations
 -- Compare: Native SQL vs Custom Rust cascade
 
-\timing on
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'END-TO-END CASCADE BENCHMARK'
@@ -99,7 +99,7 @@ WHERE id IN (
 \echo '--- Step 3: Propagate to test_tv_allocation (SURGICAL MERGE) ---'
 UPDATE test_tv_allocation a
 SET data = jsonb_merge_at_path(
-    data,
+    a.data,
     nc.data,
     ARRAY['network_configuration']
 )

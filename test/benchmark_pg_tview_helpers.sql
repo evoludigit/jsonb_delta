@@ -1,10 +1,15 @@
 -- ===================================================================
--- jsonb_ivm v0.3.0 - pg_tview Helpers Benchmark Suite
+-- jsonb_delta - pg_tview Helpers Benchmark Suite
 -- ===================================================================
 
-\timing on
+\i test/fixtures/preamble.sql
 
--- Setup test environment
+-- Setup test environment.
+-- These tables are dropped at the end of a successful run; drop them up front too
+-- so an aborted run does not block the next one.
+DROP TABLE IF EXISTS bench_company, bench_user, bench_post,
+                     tv_company, tv_user, tv_post, tv_feed CASCADE;
+
 BEGIN;
 
 CREATE TABLE bench_company (pk INT PRIMARY KEY, id UUID, name TEXT, industry TEXT);

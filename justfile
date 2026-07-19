@@ -57,16 +57,55 @@ build:
     @echo "→ Building extension (debug)..."
     @cargo build
 
-# Build and install extension (release mode)
-install:
-    @echo "→ Installing extension (release)..."
-    @cargo pgrx install --release
+# Build and install extension (release mode); optionally into a specific pg_config
+install pg_config="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Installs into whichever PostgreSQL `pg_config` resolves to. The benchmark
+    # recipes talk to the server `psql` connects to — if that is a system server
+    # rather than a pgrx-managed one, pass its pg_config explicitly:
+    #
+    #     just install /opt/postgresql17/bin/pg_config
+    #
+    # Writing into a system PostgreSQL's share directory usually needs elevation:
+    #
+    #     sudo -E $(command -v cargo) pgrx install --release --pg-config <path>
+    echo "→ Installing extension (release)..."
+    if [ -n "{{pg_config}}" ]; then
+        cargo pgrx install --release --pg-config "{{pg_config}}"
+    else
+        cargo pgrx install --release
+    fi
 
-# Run benchmarks
-bench:
-    @echo "→ Running benchmarks..."
-    @cargo pgrx install --release
-    @psql -d postgres -f test/benchmark_array_update_where.sql
+# Database used by the benchmark recipes (never the default `postgres` database)
+BENCH_DB := "jsonb_delta_bench"
+
+# Load benchmark fixtures into BENCH_DB (idempotent; creates the database if absent)
+bench-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    createdb {{BENCH_DB}} 2>/dev/null || true
+    psql -v ON_ERROR_STOP=1 -q -d {{BENCH_DB}} -c 'CREATE EXTENSION IF NOT EXISTS jsonb_delta;'
+    psql -v ON_ERROR_STOP=1 -q -d {{BENCH_DB}} -f test/fixtures/setup_benchmark_env.sql
+
+# Run the headline array-update benchmark
+bench: bench-setup
+    @echo "→ Running benchmark: array update where..."
+    @psql -v ON_ERROR_STOP=1 -d {{BENCH_DB}} -f test/benchmark_array_update_where.sql
+
+# Run the full benchmark suite
+bench-all: bench-setup
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for file in test/benchmark_*.sql; do
+        echo "→ $(basename "$file")"
+        psql -v ON_ERROR_STOP=1 -d {{BENCH_DB}} -f "$file"
+    done
+    echo "✅ Benchmark suite complete"
+
+# Assert every benchmark script runs clean (exit status only, no timing)
+bench-smoke:
+    @./test/benchmark_smoke.sh
 
 # Clean build artifacts
 clean:

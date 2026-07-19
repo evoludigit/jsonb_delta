@@ -4,7 +4,15 @@ This document contains detailed performance benchmarks for the `jsonb_delta` ext
 
 ## Benchmark Methodology
 
-All benchmarks are run on:
+> **⚠️ This section describes a methodology the current harness does not implement.**
+> The scripts in [`test/benchmark_*.sql`](../test/) wrap single statements in
+> `EXPLAIN ANALYZE`: there is no warm-up, no repetition, and no averaging. The
+> numbers published below predate the current harness and could not be traced to
+> any recorded artifact in this repository. Treat every figure in this document as
+> unverified pending re-measurement — see
+> [issue #15](https://github.com/evoludigit/jsonb_delta/issues/15).
+
+Intended methodology, to be implemented alongside the re-measurement:
 - PostgreSQL 17+ (latest stable)
 - Test data: 1000 JSONB documents with nested arrays (10-100 elements each)
 - Warm cache (queries run 3× before measurement)
@@ -287,23 +295,53 @@ See [`src/lib.rs`](../src/lib.rs) for implementation details.
 
 ## Benchmark Reproduction
 
-To run benchmarks yourself:
+To run benchmarks yourself, from the repository root:
 
 ```bash
-# Install extension
-cargo pgrx install --release
+# Install the extension into the PostgreSQL server that `psql` connects to.
+# For a system server this needs its pg_config, and usually elevation:
+just install /path/to/pg_config
 
-# Run benchmark suite
-psql -d postgres -f test/benchmark_array_update_where.sql
+# Headline array-update benchmark (loads fixtures automatically)
+just bench
+
+# Full suite
+just bench-all
 ```
 
-Expected output:
+Fixtures are loaded by `test/fixtures/setup_benchmark_env.sql`, which `just bench`
+runs for you; it is idempotent and rebuilds the mutable `test_*` working copies on
+every run. Benchmarks are run from the repository root, since each one includes
+`test/fixtures/preamble.sql` by relative path.
 
-```text
-Native SQL: 3.2ms average
-jsonb_delta:  1.1ms average
-Speedup:    2.9×
+To check that the suite still runs at all, without regard to timing:
+
+```bash
+just bench-smoke
 ```
+
+### Troubleshooting: running alongside pg_tviews
+
+The benchmark fixtures deliberately use `tv_`-prefixed table names, because they
+model the denormalized table-view pattern. On a server with **pg_tviews** in
+`shared_preload_libraries`, that prefix collides with pg_tviews' own machinery:
+
+- Its `ProcessUtility` hook intercepts `DROP TABLE tv_*` and looks up
+  `pg_tview_meta`. If the pg_tviews *extension* is not installed in the benchmark
+  database, the drop fails (`relation "pg_tview_meta" does not exist`, or a hook
+  panic on some builds).
+- If pg_tviews *is* installed, its `pg_tviews_convert_table` event trigger claims
+  plain `tv_*` tables at creation, and `benchmark_pg_tview_helpers.sql` then fails
+  its own cleanup with `TVIEW metadata not found for entity 'company'`.
+
+Run the benchmarks on a server without pg_tviews preloaded. CI does exactly that.
+
+> **Note on expected numbers.** This section previously published a specific
+> "expected output" (2.9×). That figure could not be traced to any recorded
+> benchmark artifact in this repository, and the suite that was supposed to
+> produce it did not run. Measured figures will be republished, keyed to version
+> and machine profile, once the re-measurement in progress completes. See
+> [issue #15](https://github.com/evoludigit/jsonb_delta/issues/15).
 
 ---
 

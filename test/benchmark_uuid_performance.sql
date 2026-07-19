@@ -1,10 +1,7 @@
 -- Benchmark: UUID vs Integer ID matching performance
 -- Compare jsonb_array_update_where with UUID string IDs vs Integer IDs
 
-\timing on
-\set ON_ERROR_STOP on
-
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'BENCHMARK: UUID vs Integer ID Performance'
@@ -14,11 +11,9 @@ CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
 -- Ensure test data exists
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'tv_uuid_network_configuration') THEN
-        RAISE EXCEPTION 'UUID test data not found. Run generate_uuid_test_data.sql first.';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'tv_network_configuration') THEN
-        RAISE EXCEPTION 'Integer test data not found. Run generate_cqrs_data.sql first.';
+    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'tv_uuid_network_configuration')
+       OR NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'tv_network_configuration') THEN
+        RAISE EXCEPTION 'Benchmark fixtures not found. Run: psql -f test/fixtures/setup_benchmark_env.sql (or just bench)';
     END IF;
 END $$;
 

@@ -1,27 +1,21 @@
 -- Baseline: Native PostgreSQL approach (what we're trying to beat)
 -- Scenario: Update single DNS server IP address, measure cascade time
 
-\timing on
-\set ON_ERROR_STOP on
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'BASELINE: Native PostgreSQL Cascade'
 \echo '========================================'
 \echo ''
 
--- Create updatable tables for testing (simulate what materialized views would be)
-DROP TABLE IF EXISTS test_v_dns_server CASCADE;
-DROP TABLE IF EXISTS test_tv_network_configuration CASCADE;
-DROP TABLE IF EXISTS test_tv_allocation CASCADE;
-
-CREATE TABLE test_v_dns_server AS SELECT * FROM v_dns_server;
-CREATE TABLE test_tv_network_configuration AS SELECT * FROM tv_network_configuration;
-CREATE TABLE test_tv_allocation AS SELECT * FROM tv_allocation;
-
-CREATE INDEX idx_test_v_dns_server_id ON test_v_dns_server(id);
-CREATE INDEX idx_test_tv_network_configuration_id ON test_tv_network_configuration(id);
-CREATE INDEX idx_test_tv_allocation_id ON test_tv_allocation(id);
-CREATE INDEX idx_test_tv_allocation_nc_id ON test_tv_allocation((data->'network_configuration'->>'id'));
+-- The mutable test_* working copies are created by
+-- test/fixtures/setup_benchmark_env.sql, which every benchmark run performs first.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'test_tv_network_configuration') THEN
+        RAISE EXCEPTION 'Benchmark fixtures not found. Run: psql -f test/fixtures/setup_benchmark_env.sql (or just bench)';
+    END IF;
+END $$;
 
 -- Scenario: Update DNS server #42, propagate to all dependent views
 \echo 'Scenario: UPDATE bench_dns_servers SET ip = ''9.9.9.9'' WHERE id = 42'

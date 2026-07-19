@@ -1,7 +1,5 @@
-\timing on
-
 -- Test SIMD performance on large arrays
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+\i test/fixtures/preamble.sql
 
 \echo '========================================'
 \echo 'BENCHMARK: SIMD Array Scanning'

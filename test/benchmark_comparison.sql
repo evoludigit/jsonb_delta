@@ -10,15 +10,13 @@
 --
 -- Run with: psql -d your_db -f test/benchmark_comparison.sql
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+\i test/fixtures/preamble.sql
 
 \echo '========================================='
 \echo 'Performance Comparison Benchmark'
 \echo 'jsonb_merge_shallow vs. native || operator'
 \echo '========================================='
 \echo ''
-
-\timing on
 
 -- ============================================================================
 -- Benchmark 1: Small objects (10 keys each, 10,000 merges)
