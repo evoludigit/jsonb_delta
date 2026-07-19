@@ -41,6 +41,10 @@ mod search;
 #[cfg(test)]
 mod property_tests;
 
+// Exported-signature contract test (Phase 3, Cycle 1 — #12). Test-only.
+#[cfg(any(test, feature = "pg_test"))]
+mod contract;
+
 // Re-exports for public API (maintains backward compatibility)
 pub use array_ops::*;
 pub use depth::validate_depth;
