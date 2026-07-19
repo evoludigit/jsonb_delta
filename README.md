@@ -445,10 +445,11 @@ Array Size: 10000 elements
 
   This is the function to reach for when a single denormalized row needs **many** changes at once
   (the incremental-view-maintenance case). Because the whole-document (de)serialization is paid
-  **once for the entire changeset** instead of once per edit, it is dramatically faster than
-  chaining several `jsonb_smart_patch_*` calls — 4.8×–40× in benchmarks as the number of
-  coalesced edits grows from 5 to 50. For a *single* edit, prefer the dedicated functions above;
-  the win is in coalescing.
+  **once for the entire changeset** instead of once per edit, coalescing N edits into one call
+  avoids the per-edit reserialization that chaining several `jsonb_smart_patch_*` calls incurs —
+  and the advantage grows with the number of coalesced edits. For a *single* edit there is no
+  coalescing benefit; prefer the dedicated functions above. (Quantified speedups pending
+  measurement under the project's benchmark methodology; see `test/benchmark_changeset.sql`.)
 
   ```sql
   SELECT jsonb_apply_changeset(data, '[

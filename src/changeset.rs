@@ -76,7 +76,9 @@ pub fn apply_changeset(doc: &mut Value, ops: &[Value]) -> Result<(), String> {
             ));
         };
         let Some(kind) = op_obj.get("op").and_then(Value::as_str) else {
-            return Err(format!("changeset op #{i} is missing a string \"op\" field"));
+            return Err(format!(
+                "changeset op #{i} is missing a string \"op\" field"
+            ));
         };
 
         match kind {
@@ -163,7 +165,9 @@ fn apply_merge(
 fn apply_remove(doc: &mut Value, op: &Map<String, Value>, i: usize) -> Result<(), String> {
     let segments = resolve_path(op, i)?;
     let Some((last, parent_segs)) = segments.split_last() else {
-        return Err(format!("changeset op #{i} (remove) requires a non-empty path"));
+        return Err(format!(
+            "changeset op #{i} (remove) requires a non-empty path"
+        ));
     };
     // No-op if the parent container is absent (cascade-robust).
     let Some(parent) = navigate_existing_mut(doc, parent_segs) else {
@@ -189,7 +193,9 @@ fn apply_remove(doc: &mut Value, op: &Map<String, Value>, i: usize) -> Result<()
 fn apply_increment(doc: &mut Value, op: &Map<String, Value>, i: usize) -> Result<(), String> {
     let segments = resolve_path(op, i)?;
     let Some(by) = op.get("by") else {
-        return Err(format!("changeset op #{i} (increment) requires a \"by\" field"));
+        return Err(format!(
+            "changeset op #{i} (increment) requires a \"by\" field"
+        ));
     };
     if !by.is_number() {
         return Err(format!(
@@ -340,7 +346,10 @@ fn merge_into_element(elem: &mut Value, updates: &Map<String, Value>) {
 fn insert_element(items: &mut Vec<Value>, element: Value, op: &Map<String, Value>) {
     match op.get("sort_key").and_then(Value::as_str) {
         Some(sort_key) => {
-            let order = op.get("sort_order").and_then(Value::as_str).unwrap_or("ASC");
+            let order = op
+                .get("sort_order")
+                .and_then(Value::as_str)
+                .unwrap_or("ASC");
             let pos = find_insertion_point(items, element.get(sort_key), sort_key, order);
             items.insert(pos, element);
         }
@@ -423,7 +432,9 @@ fn resolve_path(op: &Map<String, Value>, i: usize) -> Result<Vec<PathSegment>, S
                 Value::Number(n) => n
                     .as_u64()
                     .map(|u| PathSegment::Index(u as usize))
-                    .ok_or_else(|| format!("changeset op #{i}: array index must be a non-negative integer")),
+                    .ok_or_else(|| {
+                        format!("changeset op #{i}: array index must be a non-negative integer")
+                    }),
                 other => Err(format!(
                     "changeset op #{i}: path segment must be a string or integer, got: {}",
                     value_type_name(other)
@@ -574,7 +585,10 @@ mod unit_tests {
             json!([{"op":"array_update","path":"posts","match_key":"id",
                     "match_value":"bbb","value":{"t":"z"}}]),
         );
-        assert_eq!(out, json!({"posts":[{"id":"aaa","t":"x"},{"id":"bbb","t":"z"}]}));
+        assert_eq!(
+            out,
+            json!({"posts":[{"id":"aaa","t":"x"},{"id":"bbb","t":"z"}]})
+        );
     }
 
     #[test]
@@ -593,7 +607,10 @@ mod unit_tests {
             json!([{"op":"array_insert","path":"posts","value":{"id":7,"c":7},
                     "sort_key":"c","sort_order":"DESC"}]),
         );
-        assert_eq!(out, json!({"posts":[{"id":9,"c":9},{"id":7,"c":7},{"id":5,"c":5}]}));
+        assert_eq!(
+            out,
+            json!({"posts":[{"id":9,"c":9},{"id":7,"c":7},{"id":5,"c":5}]})
+        );
     }
 
     #[test]
@@ -667,7 +684,9 @@ mod unit_tests {
         let mut doc = json!({"n": i64::MAX});
         let err = apply_changeset(
             &mut doc,
-            json!([{"op":"increment","path":"n","by":1}]).as_array().unwrap(),
+            json!([{"op":"increment","path":"n","by":1}])
+                .as_array()
+                .unwrap(),
         )
         .unwrap_err();
         assert!(err.contains("overflow"));
@@ -735,7 +754,9 @@ mod unit_tests {
         let mut doc = json!({});
         let err = apply_changeset(
             &mut doc,
-            json!([{"op":"set","path":long,"value":1}]).as_array().unwrap(),
+            json!([{"op":"set","path":long,"value":1}])
+                .as_array()
+                .unwrap(),
         )
         .unwrap_err();
         assert!(err.contains("exceeds maximum"));
@@ -785,7 +806,6 @@ mod tests {
 
     #[pg_test(error = "changeset op #0 has unknown op type: nope")]
     fn apply_changeset_unknown_op_errors() {
-        Spi::run(r#"SELECT jsonb_apply_changeset('{}'::jsonb, '[{"op":"nope"}]'::jsonb)"#)
-            .unwrap();
+        Spi::run(r#"SELECT jsonb_apply_changeset('{}'::jsonb, '[{"op":"nope"}]'::jsonb)"#).unwrap();
     }
 }

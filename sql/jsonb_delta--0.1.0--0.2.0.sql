@@ -12,7 +12,7 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/changeset.rs:521
+-- src/changeset.rs:532
 -- jsonb_delta::changeset::jsonb_apply_changeset
 CREATE OR REPLACE FUNCTION "jsonb_apply_changeset"(
 	"doc" jsonb, /* pgrx::datum::json::JsonB */

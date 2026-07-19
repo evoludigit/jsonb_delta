@@ -6,12 +6,12 @@
 --
 -- Run:  psql -f test/benchmark_changeset.sql
 --
--- Reference numbers (PostgreSQL 17, debug build, best-of-10):
---     size  N | chained(ms) | changeset(ms) | speedup
---      500   5 |     11.39   |      2.38     |   4.8x
---      500  20 |     46.35   |      2.63     |  17.6x
---      500  50 |    117.41   |      3.06     |  38.3x
---     5000  50 |   1153.80   |     28.62     |  40.3x
+-- This script reports a coalescing SPEEDUP RATIO; it is a tool, not a source of
+-- published numbers. Build the extension in RELEASE for any figure you intend to
+-- cite (debug builds inflate serde cost, and because the chained arm pays that cost
+-- N times vs. once for the coalesced arm, a debug build overstates the ratio).
+-- The ratio grows with N (edits coalesced) because the coalesced arm pays the
+-- whole-document (de)serialization once while the chain pays it once per edit.
 
 CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
