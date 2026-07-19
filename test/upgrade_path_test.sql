@@ -37,14 +37,16 @@ BEGIN
     FROM pg_extension e
     JOIN pg_depend d ON d.refobjid = e.oid AND d.classid = 'pg_proc'::regclass
     WHERE e.extname = 'jsonb_delta';
-    IF n <> 15 THEN
-        RAISE EXCEPTION 'expected 15 functions after upgrade, found %', n;
+    IF n <> 16 THEN
+        RAISE EXCEPTION 'expected 16 functions after upgrade, found %', n;
     END IF;
 END $$;
 
 -- The upgraded functions must actually resolve and run.
 SELECT jsonb_merge_shallow('{"a": 1}'::jsonb, '{"b": 2}'::jsonb) AS merge_works;
 SELECT jsonb_deep_merge('{"a": {"b": 1}}'::jsonb, '{"a": {"c": 2}}'::jsonb) AS deep_merge_works;
+-- jsonb_apply_changeset is new in 0.2.0; the upgrade must ship it too.
+SELECT jsonb_apply_changeset('{"a": 1}'::jsonb, '[{"op": "set", "path": "b", "value": 2}]'::jsonb) AS apply_changeset_works;
 
 DROP EXTENSION jsonb_delta;
 

@@ -435,6 +435,33 @@ Array Size: 10000 elements
 - `jsonb_smart_patch_nested(target, source, path)` - Merge at nested path
 - `jsonb_smart_patch_array(target, source, array_path, match_key, match_value)` - Update array element
 
+### Coalesced Changeset
+
+- `jsonb_apply_changeset(doc, ops)` - Apply an **ordered list of edits in one pass**. `ops` is a
+  JSONB array of typed operations (`set`, `remove`, `merge`, `deep_merge`, `increment`,
+  `array_update`, `array_update_all`, `array_replace`, `array_upsert`, `array_delete`,
+  `array_insert`). Paths may be dot-notation strings or segment arrays; array matching supports
+  int, text, and UUID keys.
+
+  This is the function to reach for when a single denormalized row needs **many** changes at once
+  (the incremental-view-maintenance case). Because the whole-document (de)serialization is paid
+  **once for the entire changeset** instead of once per edit, it is dramatically faster than
+  chaining several `jsonb_smart_patch_*` calls — 4.8×–40× in benchmarks as the number of
+  coalesced edits grows from 5 to 50. For a *single* edit, prefer the dedicated functions above;
+  the win is in coalescing.
+
+  ```sql
+  SELECT jsonb_apply_changeset(data, '[
+    {"op": "array_upsert", "path": "posts", "match_key": "id", "match_value": "3f2a-uuid",
+     "value": {"id": "3f2a-uuid", "title": "Edited"}, "sort_key": "created_at", "sort_order": "DESC"},
+    {"op": "array_delete", "path": "posts", "match_key": "id", "match_value": 7},
+    {"op": "deep_merge", "path": ["author", "stats"], "value": {"posts": 12}},
+    {"op": "increment", "path": "stats.post_count", "by": 1},
+    {"op": "remove", "path": "stats.stale_cache"}
+  ]'::jsonb)
+  FROM tv_feed WHERE ...;
+  ```
+
 **See**: [API Reference](docs/API.md) for complete function documentation with examples
 
 ---

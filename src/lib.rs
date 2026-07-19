@@ -32,6 +32,7 @@ pub mod pg_test {
 
 // Module declarations
 mod array_ops;
+mod changeset;
 mod depth;
 mod merge;
 pub mod path; // Public for doc tests
@@ -43,6 +44,7 @@ mod property_tests;
 
 // Re-exports for public API (maintains backward compatibility)
 pub use array_ops::*;
+pub use changeset::*;
 pub use depth::validate_depth;
 pub use depth::MAX_JSONB_DEPTH;
 pub use merge::*;

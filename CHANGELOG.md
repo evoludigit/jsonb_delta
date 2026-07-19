@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`jsonb_apply_changeset(doc, ops)`** — apply an ordered list of surgical edits to a JSONB document in a **single parse/serialize pass**. `ops` is a JSONB array of typed operations: `set`, `remove`, `merge`, `deep_merge`, `increment`, `array_update`, `array_update_all`, `array_replace`, `array_upsert`, `array_delete`, `array_insert`. Paths may be dot-notation strings (`"a.b[0].c"`) or segment arrays (`["a", "b", 0, "c"]`), and array matching works for any key type (int / text / **UUID**). Intended for incremental-view-maintenance callers (e.g. `pg_tviews`) that coalesce many changes to one row per transaction: replacing a chain of N `jsonb_smart_patch_*` calls with a single `jsonb_apply_changeset` amortizes the whole-document (de)serialization across the entire changeset. Measured **4.8×–40× faster** than the equivalent chained calls as the number of coalesced edits grows from 5 to 50 (PG 17, 500- and 5000-element arrays).
+
+### Changed
+- Toolchain: pgrx 0.16.1 → 0.17.0 (first pgrx with PostgreSQL 18 support);
+  all cargo-pgrx pins in CI, Docker and the justfile moved with it.
+
 ### Fixed
 - **Version coherence** (#14): `jsonb_delta.control` now installs
   `default_version = '0.2.0'`, matching the crate version. Previously a 0.2.0
   build installed an extension labelled 0.1.0.
-- Shipped `sql/jsonb_delta--0.2.0.sql` (pgrx-generated). The generated schema
-  is byte-identical to `sql/jsonb_delta--0.1.0.sql` — no function signature
-  changed between 0.1.0 and 0.2.0.
+- Shipped `sql/jsonb_delta--0.2.0.sql` (pgrx-generated) as the canonical install
+  script for the crate version.
 - Added `sql/jsonb_delta--0.1.0--0.2.0.sql` so existing 0.1.0 installs can run
   `ALTER EXTENSION jsonb_delta UPDATE`. Covered by `test/upgrade_path_test.sql`
   in CI and `just test-upgrade` locally.
@@ -21,9 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardcoding 0.1.0, and a version-guard test (`tests/version_coherence.rs`)
   fails the build if `Cargo.toml` and the control file ever disagree again.
 
-### Changed
-- Toolchain: pgrx 0.16.1 → 0.17.0 (first pgrx with PostgreSQL 18 support);
-  all cargo-pgrx pins in CI, Docker and the justfile moved with it.
+### Security
+- **Path segment-count cap**: `jsonb_apply_changeset` rejects op paths with more than `MAX_JSONB_DEPTH` (1000) segments, preventing construction of documents deeper than the depth cap (which would otherwise feed serde's unbounded output-serialization recursion). Changeset size is also capped at 10,000 ops per call.
+- **Overflow-checked `increment`**: integer increments use checked arithmetic and raise an error on overflow instead of silently wrapping.
 
 ## [0.2.0] - 2024-04-17
 

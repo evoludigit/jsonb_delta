@@ -1,7 +1,7 @@
 /* jsonb_delta 0.1.0 -> 0.2.0 upgrade script.
-   No function signature changed between 0.1.0 and 0.2.0 (the generated
-   schemas are identical); this re-points every C-language function at the
-   0.2.0 module explicitly so the upgrade is auditable rather than empty. */
+   Adds jsonb_apply_changeset (new in 0.2.0) and re-points every existing
+   C-language function at the 0.2.0 module explicitly, so the upgrade is
+   auditable rather than empty. */
 
 /* <begin connected objects> */
 /*
@@ -12,7 +12,19 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:177
+-- src/changeset.rs:521
+-- jsonb_delta::changeset::jsonb_apply_changeset
+CREATE OR REPLACE FUNCTION "jsonb_apply_changeset"(
+	"doc" jsonb, /* pgrx::datum::json::JsonB */
+	"ops" jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* pgrx::datum::json::JsonB */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'jsonb_apply_changeset_wrapper';
+/* </end connected objects> */
+
+/* <begin connected objects> */
+-- src/lib.rs:179
 -- jsonb_delta::jsonb_array_contains_id
 CREATE OR REPLACE FUNCTION "jsonb_array_contains_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
@@ -113,7 +125,7 @@ AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:238
+-- src/lib.rs:240
 -- jsonb_delta::jsonb_delta_array_update_where_path
 CREATE OR REPLACE FUNCTION "jsonb_delta_array_update_where_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -129,7 +141,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_array_update_where_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:352
+-- src/lib.rs:354
 -- jsonb_delta::jsonb_delta_set_path
 CREATE OR REPLACE FUNCTION "jsonb_delta_set_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -142,7 +154,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_set_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:100
+-- src/lib.rs:102
 -- jsonb_delta::jsonb_extract_id
 CREATE OR REPLACE FUNCTION "jsonb_extract_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */

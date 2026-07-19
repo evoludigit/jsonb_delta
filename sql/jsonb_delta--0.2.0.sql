@@ -7,7 +7,19 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:177
+-- src/changeset.rs:521
+-- jsonb_delta::changeset::jsonb_apply_changeset
+CREATE  FUNCTION "jsonb_apply_changeset"(
+	"doc" jsonb, /* pgrx::datum::json::JsonB */
+	"ops" jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* pgrx::datum::json::JsonB */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'jsonb_apply_changeset_wrapper';
+/* </end connected objects> */
+
+/* <begin connected objects> */
+-- src/lib.rs:179
 -- jsonb_delta::jsonb_array_contains_id
 CREATE  FUNCTION "jsonb_array_contains_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
@@ -108,7 +120,7 @@ AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:238
+-- src/lib.rs:240
 -- jsonb_delta::jsonb_delta_array_update_where_path
 CREATE  FUNCTION "jsonb_delta_array_update_where_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -124,7 +136,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_array_update_where_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:352
+-- src/lib.rs:354
 -- jsonb_delta::jsonb_delta_set_path
 CREATE  FUNCTION "jsonb_delta_set_path"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -137,7 +149,7 @@ AS 'MODULE_PATHNAME', 'jsonb_delta_set_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:100
+-- src/lib.rs:102
 -- jsonb_delta::jsonb_extract_id
 CREATE  FUNCTION "jsonb_extract_id"(
 	"data" jsonb, /* pgrx::datum::json::JsonB */
