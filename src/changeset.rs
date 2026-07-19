@@ -399,12 +399,12 @@ fn apply_array_insert(doc: &mut Value, op: &Map<String, Value>, i: usize) -> Res
 
 // ---- helpers ----------------------------------------------------------------------------
 
-fn require_value<'a>(op: &'a Map<String, Value>, i: usize) -> Result<&'a Value, String> {
+fn require_value(op: &Map<String, Value>, i: usize) -> Result<&Value, String> {
     op.get("value")
         .ok_or_else(|| format!("changeset op #{i} is missing required field \"value\""))
 }
 
-fn require_match_key<'a>(op: &'a Map<String, Value>, i: usize) -> Result<&'a str, String> {
+fn require_match_key(op: &Map<String, Value>, i: usize) -> Result<&str, String> {
     let key = op
         .get("match_key")
         .and_then(Value::as_str)
@@ -413,7 +413,7 @@ fn require_match_key<'a>(op: &'a Map<String, Value>, i: usize) -> Result<&'a str
     Ok(key)
 }
 
-fn require_match_value<'a>(op: &'a Map<String, Value>, i: usize) -> Result<&'a Value, String> {
+fn require_match_value(op: &Map<String, Value>, i: usize) -> Result<&Value, String> {
     op.get("match_value")
         .ok_or_else(|| format!("changeset op #{i} is missing required field \"match_value\""))
 }
