@@ -207,6 +207,346 @@ fn jsonb_merge_shallow_fast(target: RawJsonb, source: RawJsonb) -> RawJsonb {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Array element operations
+//
+// These are where the technique pays. The native SQL they replace rebuilds the
+// whole array with `jsonb_agg` over `jsonb_array_elements`, so it materializes
+// and re-encodes every element. Walking the binary form lets a non-matching
+// element pass straight through as a `jbvBinary` pointer into the source
+// document -- never decoded, never re-encoded. Cost becomes proportional to the
+// elements actually changed rather than to the size of the array.
+// ---------------------------------------------------------------------------
+
+/// A `JsonbValue` holding a borrowed string, for key lookups.
+fn key_value(key: &str) -> pg_sys::JsonbValue {
+    let mut jbv = unsafe { std::mem::zeroed::<pg_sys::JsonbValue>() };
+    jbv.type_ = pg_sys::jbvType::jbvString;
+    jbv.val.string.len = i32::try_from(key.len()).unwrap_or(i32::MAX);
+    jbv.val.string.val = key.as_ptr().cast::<std::ffi::c_char>().cast_mut();
+    jbv
+}
+
+/// Scalar equality, mirroring `PostgreSQL`'s own `equalsJsonbScalarValue`.
+///
+/// Numbers are compared with `numeric_eq` rather than by bytes, so `1` and `1.0`
+/// match exactly as they do in SQL. Anything non-scalar (an object or array used
+/// as a match value) compares unequal, which is the existing behaviour.
+///
+/// # Safety
+///
+/// Both values must be initialized `JsonbValue`s whose payloads outlive the call.
+unsafe fn scalar_equals(a: &pg_sys::JsonbValue, b: &pg_sys::JsonbValue) -> bool {
+    if a.type_ != b.type_ {
+        return false;
+    }
+    unsafe {
+        match a.type_ {
+            pg_sys::jbvType::jbvNull => true,
+            pg_sys::jbvType::jbvBool => a.val.boolean == b.val.boolean,
+            pg_sys::jbvType::jbvString => {
+                a.val.string.len == b.val.string.len && {
+                    let n = usize::try_from(a.val.string.len).unwrap_or(0);
+                    std::slice::from_raw_parts(a.val.string.val.cast::<u8>(), n)
+                        == std::slice::from_raw_parts(b.val.string.val.cast::<u8>(), n)
+                }
+            }
+            pg_sys::jbvType::jbvNumeric => {
+                // Numbers compare by value rather than by bytes, so `1` matches
+                // `1.0` exactly as it would in SQL. pgrx's AnyNumeric wraps
+                // PostgreSQL's own numeric comparison, which avoids reimplementing
+                // scale handling here.
+                let an = pgrx::AnyNumeric::from_datum(pg_sys::Datum::from(a.val.numeric), false);
+                let bn = pgrx::AnyNumeric::from_datum(pg_sys::Datum::from(b.val.numeric), false);
+                match (an, bn) {
+                    (Some(x), Some(y)) => x == y,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Whether an array element is an object whose `match_key` equals `match_value`.
+///
+/// # Safety
+///
+/// `elem` must be a `jbvBinary` or scalar value produced by a live iterator.
+unsafe fn element_matches(
+    elem: &pg_sys::JsonbValue,
+    match_key: &str,
+    match_value: &pg_sys::JsonbValue,
+) -> bool {
+    unsafe {
+        if elem.type_ != pg_sys::jbvType::jbvBinary {
+            return false;
+        }
+        let container = elem.val.binary.data;
+        if (*container).header & pg_sys::JB_FOBJECT == 0 {
+            return false;
+        }
+        let mut key = key_value(match_key);
+        let found =
+            pg_sys::findJsonbValueFromContainer(container, pg_sys::JB_FOBJECT, &raw mut key);
+        !found.is_null() && scalar_equals(&*found, match_value)
+    }
+}
+
+/// What to do with an array element that matched.
+enum ElementAction {
+    /// Merge `updates`' keys into the element.
+    Merge(*mut pg_sys::JsonbContainer),
+    /// Drop the element from the array.
+    Drop,
+}
+
+/// Rebuild `doc`, transforming the array held at top-level key `array_path`.
+///
+/// Elements that do not match are pushed through untouched as binary values.
+/// Keys of `doc` other than `array_path` are likewise passed through whole.
+///
+/// A document with no such key, or whose value there is not an array, is
+/// reproduced unchanged -- the existing functions are deliberately no-ops in
+/// that case so a cascading caller need not check first.
+///
+/// # Safety
+///
+/// `doc` must be a valid object container outliving the call.
+unsafe fn rebuild_with_array_transform(
+    doc: *mut pg_sys::JsonbContainer,
+    array_path: &str,
+    match_key: &str,
+    match_value: &pg_sys::JsonbValue,
+    action: &ElementAction,
+    all_matches: bool,
+) -> *mut pg_sys::Jsonb {
+    unsafe {
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+
+        let mut it = pg_sys::JsonbIteratorInit(doc);
+        let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+
+        let mut done = false;
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            let is_target = v.type_ == pg_sys::jbvType::jbvString
+                && usize::try_from(v.val.string.len).unwrap_or(0) == array_path.len()
+                && std::slice::from_raw_parts(v.val.string.val.cast::<u8>(), array_path.len())
+                    == array_path.as_bytes();
+
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_KEY,
+                &raw mut v,
+            );
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+
+            let is_array = v.type_ == pg_sys::jbvType::jbvBinary
+                && (*v.val.binary.data).header & pg_sys::JB_FARRAY != 0;
+
+            if !is_target || !is_array || done {
+                pg_sys::pushJsonbValue(
+                    &raw mut state,
+                    pg_sys::JsonbIteratorToken::WJB_VALUE,
+                    &raw mut v,
+                );
+                continue;
+            }
+
+            // Rewrite this array, element by element.
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                std::ptr::null_mut(),
+            );
+
+            let mut ait = pg_sys::JsonbIteratorInit(v.val.binary.data);
+            let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+
+            loop {
+                let etok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                if etok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                    break;
+                }
+
+                if (!done || all_matches) && element_matches(&ev, match_key, match_value) {
+                    if !all_matches {
+                        done = true;
+                    }
+                    match *action {
+                        ElementAction::Drop => {}
+                        ElementAction::Merge(updates) => {
+                            pg_sys::pushJsonbValue(
+                                &raw mut state,
+                                pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                                std::ptr::null_mut(),
+                            );
+                            push_object_pairs(ev.val.binary.data, &raw mut state);
+                            push_object_pairs(updates, &raw mut state);
+                            pg_sys::pushJsonbValue(
+                                &raw mut state,
+                                pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                                std::ptr::null_mut(),
+                            );
+                        }
+                    }
+                } else {
+                    // The common path: hand the element straight through without
+                    // decoding it.
+                    pg_sys::pushJsonbValue(
+                        &raw mut state,
+                        pg_sys::JsonbIteratorToken::WJB_ELEM,
+                        &raw mut ev,
+                    );
+                }
+            }
+
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                std::ptr::null_mut(),
+            );
+        }
+
+        let result = pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        );
+        pg_sys::JsonbValueToJsonb(result)
+    }
+}
+
+/// Whether `array_path` names an array at the top level of `doc`.
+///
+/// The two callers disagree about what to do when it does not, so this reports
+/// rather than decides: `jsonb_array_update_where` errors, while
+/// `jsonb_array_delete_where` returns the document untouched. Both behaviours are
+/// preserved exactly.
+///
+/// # Safety
+///
+/// `doc` must be a valid object container outliving the call.
+unsafe fn array_at(doc: *mut pg_sys::JsonbContainer, array_path: &str) -> Option<bool> {
+    unsafe {
+        let mut key = key_value(array_path);
+        let found = pg_sys::findJsonbValueFromContainer(doc, pg_sys::JB_FOBJECT, &raw mut key);
+        if found.is_null() {
+            return None;
+        }
+        Some(
+            (*found).type_ == pg_sys::jbvType::jbvBinary
+                && (*(*found).val.binary.data).header & pg_sys::JB_FARRAY != 0,
+        )
+    }
+}
+
+/// Read the root of a document as a single `JsonbValue`, for use as a match value.
+///
+/// # Safety
+///
+/// `j` must wrap a live, detoasted document.
+unsafe fn root_as_value(j: &RawJsonb) -> pg_sys::JsonbValue {
+    unsafe {
+        let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbToJsonbValue(j.0, &raw mut v);
+        // A top-level scalar is stored as a one-element pseudo-array; unwrap it so
+        // the comparison sees the scalar the caller wrote.
+        if v.type_ == pg_sys::jbvType::jbvBinary
+            && (*v.val.binary.data).header & pg_sys::JB_FSCALAR != 0
+        {
+            let mut it = pg_sys::JsonbIteratorInit(v.val.binary.data);
+            let mut inner = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut inner, true);
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut inner, true);
+            return inner;
+        }
+        v
+    }
+}
+
+/// Update the first array element matching `match_key` = `match_value`.
+///
+/// Behaviourally identical to `jsonb_array_update_where`, without materializing
+/// the document.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_array_update_where_fast(
+    target: RawJsonb,
+    array_path: &str,
+    match_key: &str,
+    match_value: RawJsonb,
+    updates: RawJsonb,
+) -> RawJsonb {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    if !is_object(&target) {
+        error!("target argument must be a JSONB object");
+    }
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        // Matches the serde implementation, which errors rather than no-ops here.
+        match array_at(target.container(), array_path) {
+            None => error!("Path '{}' does not exist in document", array_path),
+            Some(false) => error!("Path '{}' does not point to an array", array_path),
+            Some(true) => {}
+        }
+        let mv = root_as_value(&match_value);
+        RawJsonb(rebuild_with_array_transform(
+            target.container(),
+            array_path,
+            match_key,
+            &mv,
+            &ElementAction::Merge(updates.container()),
+            false,
+        ))
+    }
+}
+
+/// Delete every array element matching `match_key` = `match_value`.
+///
+/// Behaviourally identical to `jsonb_array_delete_where`, without materializing
+/// the document.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_array_delete_where_fast(
+    target: RawJsonb,
+    array_path: &str,
+    match_key: &str,
+    match_value: RawJsonb,
+) -> RawJsonb {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    if !is_object(&target) {
+        error!("target argument must be a JSONB object");
+    }
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        let mv = root_as_value(&match_value);
+        // First match only: the serde implementation removes a single index found
+        // by `find_element_by_match`, and this must not quietly delete more.
+        RawJsonb(rebuild_with_array_transform(
+            target.container(),
+            array_path,
+            match_key,
+            &mv,
+            &ElementAction::Drop,
+            false,
+        ))
+    }
+}
+
 /// Differential tests against the native `||` operator.
 ///
 /// Every case asserts equality with `||` rather than against a hand-written
@@ -280,6 +620,107 @@ mod tests {
             .collect::<Vec<_>>()
             .join(",");
         assert_matches_concat(&format!("{{{a}}}"), &format!("{{{b}}}"));
+    }
+
+    /// Assert a `_fast` call matches the serde function it replaces.
+    fn assert_matches_serde(fast: &str, serde: &str) {
+        let same = Spi::get_one::<bool>(&format!("SELECT {fast} = {serde}"))
+            .expect("SPI ok")
+            .expect("not null");
+        assert!(
+            same,
+            "binary and serde implementations disagreed:\n  {fast}\n  {serde}"
+        );
+    }
+
+    const DOC: &str = r#"{"posts":[{"id":1,"t":"a"},{"id":2,"t":"b"},{"id":3,"t":"c"},{"id":2,"t":"dup"}],"n":9}"#;
+
+    #[pg_test]
+    fn array_update_matches_serde() {
+        for (key, upd) in [
+            ("2", r#"{"t":"Z"}"#),
+            ("1", r#"{"t":"Z"}"#),
+            ("99", r#"{"t":"Z"}"#),
+            ("2", r#"{"x":true}"#),
+        ] {
+            assert_matches_serde(
+                &format!("jsonb_array_update_where_fast('{DOC}','posts','id','{key}','{upd}')"),
+                &format!("jsonb_array_update_where('{DOC}','posts','id','{key}','{upd}')"),
+            );
+        }
+    }
+
+    /// Only the first match is updated, even though the fixture has two id=2.
+    #[pg_test]
+    fn array_update_touches_only_the_first_match() {
+        assert_matches_serde(
+            &format!("jsonb_array_update_where_fast('{DOC}','posts','id','2','{{\"t\":\"Z\"}}')"),
+            &format!("jsonb_array_update_where('{DOC}','posts','id','2','{{\"t\":\"Z\"}}')"),
+        );
+    }
+
+    #[pg_test]
+    fn array_delete_matches_serde() {
+        for key in ["2", "1", "99"] {
+            assert_matches_serde(
+                &format!("jsonb_array_delete_where_fast('{DOC}','posts','id','{key}')"),
+                &format!("jsonb_array_delete_where('{DOC}','posts','id','{key}')"),
+            );
+        }
+    }
+
+    /// `delete` is a no-op on a missing path, where `update` errors. The two
+    /// serde functions genuinely differ here and both contracts are preserved.
+    #[pg_test]
+    fn delete_on_missing_path_is_a_no_op() {
+        assert_matches_serde(
+            &format!("jsonb_array_delete_where_fast('{DOC}','nope','id','2')"),
+            &format!("jsonb_array_delete_where('{DOC}','nope','id','2')"),
+        );
+    }
+
+    #[pg_test(error = "Path 'nope' does not exist in document")]
+    fn update_on_missing_path_errors() {
+        Spi::run("SELECT jsonb_array_update_where_fast('{\"a\":1}','nope','id','1','{}')")
+            .expect("SPI ok");
+    }
+
+    #[pg_test(error = "match_key must not be empty")]
+    fn empty_match_key_is_rejected() {
+        Spi::run("SELECT jsonb_array_update_where_fast('{\"p\":[]}','p','','1','{}')")
+            .expect("SPI ok");
+    }
+
+    #[pg_test]
+    fn text_and_uuid_match_keys() {
+        let doc = r#"{"posts":[{"id":"a-1","t":"x"},{"id":"3f2a-uuid","t":"y"}]}"#;
+        assert_matches_serde(
+            &format!(
+                r#"jsonb_array_update_where_fast('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
+            ),
+            &format!(
+                r#"jsonb_array_update_where('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
+            ),
+        );
+    }
+
+    /// Numbers match by value, as `PostgreSQL` does: `'2'::jsonb = '2.0'::jsonb`
+    /// is true, and containment agrees.
+    ///
+    /// This is a deliberate *divergence* from the serde implementation, which
+    /// compares `serde_json::Number` structurally and so fails to match `2` when
+    /// given `2.0`. A caller passing `to_jsonb(2.0)` or a numeric column silently
+    /// matched nothing before. Asserting the SQL-consistent behaviour here so the
+    /// difference is pinned rather than discovered later.
+    #[pg_test]
+    fn numbers_match_by_value_not_by_scale() {
+        let matched = Spi::get_one::<bool>(
+            r#"SELECT jsonb_array_update_where_fast('{"p":[{"id":2,"t":"a"}]}','p','id','2.0','{"t":"Z"}')
+                    = '{"p":[{"id":2,"t":"Z"}]}'::jsonb"#,
+        )
+        .expect("SPI ok")
+        .expect("not null");
+        assert!(matched, "2.0 should match an id of 2, as it does in SQL");
     }
 
     #[pg_test]
