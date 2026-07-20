@@ -23,7 +23,7 @@ use crate::find_element_by_match;
 use crate::path::{parse_path, set_path, PathSegment};
 use crate::{validate_depth, value_type_name, MAX_JSONB_DEPTH};
 
-/// Maximum number of operations accepted in a single changeset (DoS guard: bounds the
+/// Maximum number of operations accepted in a single changeset (`DoS` guard: bounds the
 /// total work of one call, since the ops array is otherwise attacker-controlled).
 const MAX_CHANGESET_OPS: usize = 10_000;
 
@@ -51,7 +51,7 @@ const MAX_PATH_SEGMENTS: usize = MAX_JSONB_DEPTH;
 /// | `array_replace`    | `path`, `match_key`, `match_value`, `value` | replace first matching element wholesale        |
 /// | `array_upsert`     | `path`, `match_key`, `match_value`, `value` (object); `sort_key`,`sort_order` optional | update first match, else insert `value` |
 /// | `array_delete`     | `path`, `match_key`, `match_value`       | remove first matching element                      |
-/// | `array_insert`     | `path`, `value`; `sort_key`,`sort_order` optional | insert element (ordered if sort_key given) |
+/// | `array_insert`     | `path`, `value`; `sort_key`,`sort_order` optional | insert element (ordered if `sort_key` given) |
 ///
 /// `path` may be a dot-notation string (`"user.profile.name"`, `"items[0].id"`) OR an
 /// array of segments (`["user","profile","name"]`, `["items", 0, "id"]`). The array form
@@ -431,7 +431,7 @@ fn resolve_path(op: &Map<String, Value>, i: usize) -> Result<Vec<PathSegment>, S
                 Value::String(k) => Ok(PathSegment::Key(k.clone())),
                 Value::Number(n) => n
                     .as_u64()
-                    .map(|u| PathSegment::Index(u as usize))
+                    .and_then(|u| usize::try_from(u).ok().map(PathSegment::Index))
                     .ok_or_else(|| {
                         format!("changeset op #{i}: array index must be a non-negative integer")
                     }),
@@ -557,6 +557,7 @@ mod unit_tests {
     use super::*;
     use serde_json::json;
 
+    #[allow(clippy::needless_pass_by_value)]
     fn run(mut doc: Value, ops: Value) -> Value {
         apply_changeset(&mut doc, ops.as_array().unwrap()).unwrap();
         doc
@@ -763,7 +764,7 @@ mod unit_tests {
     }
 }
 
-/// End-to-end tests that exercise the real `#[pg_extern]` through SQL: JsonB
+/// End-to-end tests that exercise the real `#[pg_extern]` through SQL: `JsonB`
 /// (de)serialization at the pgrx boundary, and the `error!` unwind path.
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
