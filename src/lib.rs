@@ -30,6 +30,21 @@ pub mod pg_test {
     }
 }
 
+/// The exact `serde_json` this crate was built against.
+///
+/// `path::navigate_path` and friends take and return `serde_json::Value`, so a
+/// caller that constructs values with its *own* `serde_json` gets a type error
+/// whenever Cargo resolves two copies -- the error reads
+/// "expected `serde_json::value::Value`, found `Value`", which is memorable for
+/// the wrong reasons.
+///
+/// That is not hypothetical here. Under `--features pg_test`, `pgrx-tests`
+/// straddles the normal and build-dependency graphs, which resolver v2 keeps
+/// separately feature-resolved, so two `serde_json` compilations of the *same
+/// version* end up in scope and the doctests below stop compiling. Going through
+/// this re-export pins the identity and the problem disappears.
+pub use serde_json;
+
 // Module declarations
 mod array_ops;
 mod binary;
