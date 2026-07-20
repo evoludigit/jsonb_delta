@@ -91,6 +91,6 @@ dev: fix build
 # Initialize pgrx for first-time setup
 init:
     @echo "→ Initializing pgrx..."
-    @cargo install cargo-pgrx --locked --version 0.16.1
+    @cargo install cargo-pgrx --locked --version 0.17.0
     @cargo pgrx init
     @echo "✅ pgrx initialized"

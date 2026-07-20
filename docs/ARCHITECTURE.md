@@ -340,7 +340,7 @@ Currently, upgrades require:
 
 ```toml
 [dependencies]
-pgrx = "0.16.1"
+pgrx = "0.17.0"
 serde_json = "1.0"
 ```
 

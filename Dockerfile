@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgrx
-RUN cargo install --locked cargo-pgrx --version 0.16.1
+RUN cargo install --locked cargo-pgrx --version 0.17.0
 
 FROM base AS builder
 

@@ -42,7 +42,7 @@ Enhancement suggestions are welcome! Please provide:
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
    # Install pgrx
-   cargo install --locked cargo-pgrx --version 0.16.1
+   cargo install --locked cargo-pgrx --version 0.17.0
    cargo pgrx init
 
    # Install just (task runner)
