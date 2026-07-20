@@ -32,6 +32,7 @@ pub mod pg_test {
 
 // Module declarations
 mod array_ops;
+mod binary;
 mod changeset;
 mod depth;
 mod merge;
