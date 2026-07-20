@@ -190,6 +190,31 @@ two measurements will keep talking past each other.
 
 Requires explicit go-ahead before first `up`: this is the step that spends money.
 
+#### Outcome — script built and validated, STOPPED before spending (2026-07-20)
+
+`scripts/provision_bench_vps.sh` exists with `up` / `run` / `down`, plus `status`,
+`profile`, and `selftest`. Everything that costs nothing has been exercised; **no
+billable operation has been performed and `hcloud server list` is empty.**
+
+`selftest` covers the cycle's two RED conditions and passes 8/8:
+
+| Check | Asserts |
+|---|---|
+| `up` refuses without `BENCH_CONFIRM_SPEND=yes` | no default and no interactive prompt can bill by accident |
+| `run` / `profile` with no instance | fails loudly rather than silently measuring the wrong machine |
+| `down` with nothing to delete, run twice | idempotent, and does not error on a clean account |
+| `up --dry-run` | prints the exact `hcloud server create` call and makes none |
+| post-condition | no server was created by the self-test itself |
+
+Cost discipline beyond the plan: `down` sweeps volumes and floating IPs **by
+label**, since those survive server deletion and keep billing; it re-checks and
+fails loudly if the server is still present afterwards; and `up`, `down` and `run`
+all end by printing billing state, so an instance left running is visible rather
+than inferred. `--dry-run` is honoured by every mutating call.
+
+Remaining before Cycle 3: the owner's explicit authorization for the first `up`,
+and `BENCH_SSH_KEY` naming a key in the `fraisier` context.
+
 ### Cycle 3: Measure
 - **RED**: Scenario matrix as failing/unpopulated rows: {update, delete, insert,
   batch, multi-row} × {stored table, in-memory} × {10, 50, 100, 1000} × {int-id, text-id}.

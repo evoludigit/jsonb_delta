@@ -18,10 +18,14 @@ pay it). So the claim to measure is **not** "X× faster than native"; it is:
 
 Add to Phase 4 coverage:
 
-- [ ] `jsonb_apply_changeset` vs. chained `jsonb_smart_patch_array`, N ∈ {5, 20, 50},
-      across the existing array-size sweep, integer and text/UUID keys.
-- [ ] The same run must also show the single-edit case at parity — that is the
-      honest half of the #15 answer and must be published alongside the win.
+- [x] `jsonb_apply_changeset` vs. chained `jsonb_smart_patch_array`, N ∈ {5, 20, 50},
+      across the existing array-size sweep — **integer keys done** under the harness
+      (2026-07-20, see below). **Text/UUID keys still outstanding.**
+- [x] The same run must also show the single-edit case at parity — measured 0.99 at
+      N=1, and it is the control that makes the rest of the sweep believable.
+- [ ] **Also measure against `jsonb_array_update_where_batch`, not only the chain.**
+      Added after the first harness run showed why: see "Result 3" below. Omitting it
+      would let the feature be described by its most flattering comparison.
 
 A runnable, self-contained comparison already ships on the PR branch at
 `test/benchmark_changeset.sql` (asserts chained ≡ changeset byte-for-byte before
@@ -48,11 +52,45 @@ the coalescing advantage survives release; it is the *absolute* milliseconds tha
 must be regenerated under the real harness, per this phase's rule (argue from
 ratios measured in the same run on the same host, never absolute ms).
 
+## Under the harness (2026-07-20) — still dev-host, but now instrument-grade
+
+The run above has now been redone through `test/bench/harness.sql`: 3 warm-up +
+10 measured trials, interleaved arms, median and p95, byte-identical output
+asserted per arm, calibration gate passed first. Branch `bench/integration`
+(PR #16 tip + harness); scenarios in `test/bench/scenarios_changeset.sql`;
+artifact `benchmarks/2026-07-20-changeset-derisk-devhost.{md,csv}` with raw
+per-trial timings retained.
+
+It **independently reproduces the numbers above** — 4.50× / 17.99× / 41.82× at
+N = 5 / 20 / 50 (500-element array), against 4.8× / 18.1× / 40.1× best-of-6. The
+build-invariance conclusion stands, now on N≥10 order statistics rather than a
+best-of. The ratio is linear in N and 0.99 at N=1.
+
+### Result 3 — against the strongest baseline it is parity, and that changes the claim
+
+`jsonb_array_update_where_batch` already applies N integer-keyed updates to one
+array in a single parse/serialize pass, and is on paper the better algorithm (one
+HashMap-driven pass, where a changeset rescans the array once per op). Measured
+against it, the changeset is at **parity**: 1.03 (500/N=5), 0.94 (500/N=50),
+1.07 (5000/N=50).
+
+So the honest framing is narrower than "coalescing is a win." Coalescing is a win
+**against a chain**; against the best tool already in the box for that exact
+operation it is a wash, and the changeset's real advantage is coverage —
+heterogeneous ops, several paths in one pass, and non-integer match keys, which
+`batch` cannot express at all (it reads `match_value` via `as_i64` and silently
+skips anything else).
+
+Publishing the chained ratio alone would be true and misleading, because a reader
+doing precisely the benchmarked operation should reach for `batch` and would
+measure parity. That is the same failure mode #15 exists to correct, so both
+baselines ship together with N and array size attached, or neither does.
+
 ## Do not merge PR #16 until
 
-1. **Phase 2 lands.** PR #16 regenerates `sql/jsonb_delta--0.1.0.sql` — the file
-   whose version incoherence Phase 2 fixes. The regen must be redone on top of
-   Phase 2, not before it.
+1. ~~**Phase 2 lands.**~~ **Satisfied 2026-07-20** — Phase 2 merged to `main` as
+   PR #21 and #14 is closed. PR #16 now sits directly on top of it, and its diff
+   has shrunk to its four feature commits.
 2. **Phase 4 produces the real ratios.** The PR's README/CHANGELOG already have the
    unsourced figure removed and point at this methodology; restore a number only
    once it comes from this harness.
