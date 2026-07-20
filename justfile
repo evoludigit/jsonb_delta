@@ -5,12 +5,15 @@
 # Default PostgreSQL version for local testing
 PG_VERSION := "18"
 
+# Crate version — the single source of truth for the extension version
+VERSION := `grep -m1 '^version' Cargo.toml | cut -d'"' -f2`
+
 # Default: show available commands
 default:
     @just --list
 
 # Run all tests (Rust + SQL)
-test: test-rust test-sql
+test: test-rust test-sql test-upgrade
 
 # Run Rust unit tests via pgrx
 test-rust:
@@ -35,6 +38,20 @@ test-sql:
     echo "→ Running smoke test..."
     psql -d test_jsonb_delta -f test/smoke_test_v0.1.0.sql >/dev/null || exit 1
     echo "✅ All SQL tests passed"
+
+# Test the packaged upgrade path (0.1.0 -> current)
+test-upgrade:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "→ Installing extension..."
+    cargo pgrx install --release --pg-config ~/.pgrx/{{PG_VERSION}}.*/pgrx-install/bin/pg_config
+    SHAREDIR=$(~/.pgrx/{{PG_VERSION}}.*/pgrx-install/bin/pg_config --sharedir)
+    echo "→ Copying versioned scripts to $SHAREDIR/extension..."
+    cp sql/jsonb_delta--*.sql "$SHAREDIR/extension/"
+    dropdb test_jsonb_delta_upgrade 2>/dev/null || true
+    createdb test_jsonb_delta_upgrade
+    psql -d test_jsonb_delta_upgrade -v ON_ERROR_STOP=1 -f test/upgrade_path_test.sql
+    echo "✅ Upgrade path test passed"
 
 # Quick development checks (no tests)
 check:
@@ -76,8 +93,8 @@ clean:
 
 # Generate SQL schema
 schema:
-    @echo "→ Generating SQL schema..."
-    @cargo pgrx schema > sql/jsonb_delta--0.1.0.sql
+    @echo "→ Generating SQL schema for v{{VERSION}}..."
+    @cargo pgrx schema > sql/jsonb_delta--{{VERSION}}.sql
     @echo "✅ Schema generated"
 
 # Full CI-like check (what GitHub Actions runs)

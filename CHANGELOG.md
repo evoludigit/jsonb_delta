@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Version coherence** (#14): `jsonb_delta.control` now installs
+  `default_version = '0.2.0'`, matching the crate version. Previously a 0.2.0
+  build installed an extension labelled 0.1.0.
+- Shipped `sql/jsonb_delta--0.2.0.sql` (pgrx-generated). The generated schema
+  is byte-identical to `sql/jsonb_delta--0.1.0.sql` — no function signature
+  changed between 0.1.0 and 0.2.0.
+- Added `sql/jsonb_delta--0.1.0--0.2.0.sql` so existing 0.1.0 installs can run
+  `ALTER EXTENSION jsonb_delta UPDATE`. Covered by `test/upgrade_path_test.sql`
+  in CI and `just test-upgrade` locally.
+- `just schema` now derives the script name from the crate version instead of
+  hardcoding 0.1.0, and a version-guard test (`tests/version_coherence.rs`)
+  fails the build if `Cargo.toml` and the control file ever disagree again.
+
+### Changed
+- Toolchain: pgrx 0.16.1 → 0.17.0 (first pgrx with PostgreSQL 18 support);
+  all cargo-pgrx pins in CI, Docker and the justfile moved with it.
+
 ## [0.2.0] - 2024-04-17
 
 ### Security
