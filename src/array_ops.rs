@@ -18,6 +18,10 @@ use crate::value_type_name;
 ///
 /// # Errors
 /// Returns `Err` if `key` is an empty string.
+// `pub` would surface this through lib.rs's `pub use array_ops::*` glob and
+// trip hidden_glob_reexports on the private import there; pub(crate) is the
+// visibility we actually want.
+#[allow(clippy::redundant_pub_crate)]
 pub(crate) fn validate_match_key(key: &str) -> Result<(), String> {
     if key.is_empty() {
         Err("match_key must not be empty".into())
