@@ -547,6 +547,346 @@ fn jsonb_array_delete_where_fast(
     }
 }
 
+// ---------------------------------------------------------------------------
+// The pg_tviews-facing wrappers
+//
+// These are thin: `smart_patch_scalar` is a shallow merge and `smart_patch_array`
+// is a first-match element merge, so both reduce to machinery already above. The
+// argument ORDER differs from `jsonb_array_update_where` (source comes second
+// here), which is the kind of detail that makes a hand-written duplicate a
+// liability -- hence the delegation.
+// ---------------------------------------------------------------------------
+
+/// Root-level shallow merge, without materializing either document.
+///
+/// Behaviourally identical to `jsonb_smart_patch_scalar`, which is itself defined
+/// as `jsonb_merge_shallow`.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_smart_patch_scalar_fast(target: RawJsonb, source: RawJsonb) -> RawJsonb {
+    jsonb_merge_shallow_fast(target, source)
+}
+
+/// Merge `source` into the first array element matching `match_key`.
+///
+/// Behaviourally identical to `jsonb_smart_patch_array`, including its contract
+/// of erroring rather than no-oping when the path is absent or is not an array.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_smart_patch_array_fast(
+    target: RawJsonb,
+    source: RawJsonb,
+    array_path: &str,
+    match_key: &str,
+    match_value: RawJsonb,
+) -> RawJsonb {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    if !is_object(&target) {
+        error!("target argument must be a JSONB object");
+    }
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        match array_at(target.container(), array_path) {
+            None => error!("Path '{}' does not exist in document", array_path),
+            Some(false) => error!("Path '{}' does not point to an array", array_path),
+            Some(true) => {}
+        }
+        let mv = root_as_value(&match_value);
+        RawJsonb(rebuild_with_array_transform(
+            target.container(),
+            array_path,
+            match_key,
+            &mv,
+            &ElementAction::Merge(source.container()),
+            false,
+        ))
+    }
+}
+
+/// Apply many keyed updates to one array in a single pass.
+///
+/// Behaviourally identical to `jsonb_array_update_where_batch`: specs are
+/// `{"match_value": ..., "updates": {...}}`, malformed specs are skipped, a
+/// missing path / non-array path / non-array spec list each raise, and *every*
+/// element matching a spec is updated rather than only the first.
+///
+/// One deliberate extension: the serde version reads `match_value` with `as_i64`
+/// and silently drops anything else, so text and UUID keys could not be batched
+/// at all. Matching here goes through the same scalar comparison as the other
+/// functions, so those keys now work. Every previously-working call behaves
+/// identically; only cases that used to match nothing have changed.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_array_update_where_batch_fast(
+    target: RawJsonb,
+    array_path: &str,
+    match_key: &str,
+    updates_array: RawJsonb,
+) -> RawJsonb {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    if !is_object(&target) {
+        error!("target argument must be a JSONB object");
+    }
+
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        // The serde version raises on all three of these rather than no-oping.
+        match array_at(target.container(), array_path) {
+            None => error!("Path '{}' does not exist in document", array_path),
+            Some(false) => error!("Path '{}' does not point to an array", array_path),
+            Some(true) => {}
+        }
+        if (*updates_array.container()).header & pg_sys::JB_FARRAY == 0 {
+            error!("updates_array must be a JSONB array");
+        }
+
+        // Collect the specs once. Each entry borrows into `updates_array`, which
+        // outlives the rebuild below.
+        let mut specs: Vec<(pg_sys::JsonbValue, *mut pg_sys::JsonbContainer)> = Vec::new();
+        let specs_root = updates_array.container();
+        {
+            let mut it = pg_sys::JsonbIteratorInit(specs_root);
+            let mut sv = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut sv, true);
+            loop {
+                let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut sv, true);
+                if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                    break;
+                }
+                if sv.type_ != pg_sys::jbvType::jbvBinary {
+                    continue; // malformed spec, skipped as before
+                }
+                let spec = sv.val.binary.data;
+                if (*spec).header & pg_sys::JB_FOBJECT == 0 {
+                    continue;
+                }
+                let mut mv_key = key_value("match_value");
+                let mv =
+                    pg_sys::findJsonbValueFromContainer(spec, pg_sys::JB_FOBJECT, &raw mut mv_key);
+                let mut up_key = key_value("updates");
+                let up =
+                    pg_sys::findJsonbValueFromContainer(spec, pg_sys::JB_FOBJECT, &raw mut up_key);
+                if mv.is_null() || up.is_null() {
+                    continue;
+                }
+                if (*up).type_ != pg_sys::jbvType::jbvBinary
+                    || (*(*up).val.binary.data).header & pg_sys::JB_FOBJECT == 0
+                {
+                    continue;
+                }
+                specs.push((*mv, (*up).val.binary.data));
+            }
+        }
+
+        RawJsonb(rebuild_with_batch_updates(
+            target.container(),
+            array_path,
+            match_key,
+            &specs,
+        ))
+    }
+}
+
+/// Rebuild `doc`, applying the first matching spec to each element of the array
+/// at `array_path`.
+///
+/// # Safety
+///
+/// `doc` must be a valid object container, and every pointer in `specs` must
+/// outlive the call.
+unsafe fn rebuild_with_batch_updates(
+    doc: *mut pg_sys::JsonbContainer,
+    array_path: &str,
+    match_key: &str,
+    specs: &[(pg_sys::JsonbValue, *mut pg_sys::JsonbContainer)],
+) -> *mut pg_sys::Jsonb {
+    unsafe {
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+
+        let mut it = pg_sys::JsonbIteratorInit(doc);
+        let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            let is_target = v.type_ == pg_sys::jbvType::jbvString
+                && usize::try_from(v.val.string.len).unwrap_or(0) == array_path.len()
+                && std::slice::from_raw_parts(v.val.string.val.cast::<u8>(), array_path.len())
+                    == array_path.as_bytes();
+
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_KEY,
+                &raw mut v,
+            );
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+
+            if !is_target || v.type_ != pg_sys::jbvType::jbvBinary {
+                pg_sys::pushJsonbValue(
+                    &raw mut state,
+                    pg_sys::JsonbIteratorToken::WJB_VALUE,
+                    &raw mut v,
+                );
+                continue;
+            }
+
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                std::ptr::null_mut(),
+            );
+            let mut ait = pg_sys::JsonbIteratorInit(v.val.binary.data);
+            let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+            loop {
+                let etok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                if etok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                    break;
+                }
+                let hit = specs
+                    .iter()
+                    .find(|(mv, _)| element_matches(&ev, match_key, mv));
+                if let Some((_, updates)) = hit {
+                    pg_sys::pushJsonbValue(
+                        &raw mut state,
+                        pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                        std::ptr::null_mut(),
+                    );
+                    push_object_pairs(ev.val.binary.data, &raw mut state);
+                    push_object_pairs(*updates, &raw mut state);
+                    pg_sys::pushJsonbValue(
+                        &raw mut state,
+                        pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                        std::ptr::null_mut(),
+                    );
+                } else {
+                    pg_sys::pushJsonbValue(
+                        &raw mut state,
+                        pg_sys::JsonbIteratorToken::WJB_ELEM,
+                        &raw mut ev,
+                    );
+                }
+            }
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                std::ptr::null_mut(),
+            );
+        }
+
+        let result = pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        );
+        pg_sys::JsonbValueToJsonb(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Read-only probes
+//
+// These never rebuild anything, so they shed the *entire* round trip rather than
+// half of it. The serde versions still pay a full parse to answer a question
+// about one key.
+// ---------------------------------------------------------------------------
+
+/// Whether `array_path` holds an element whose `id_key` equals `id_value`.
+///
+/// Behaviourally identical to `jsonb_array_contains_id`: a non-object document,
+/// a missing path, or a non-array at that path all answer `false` rather than
+/// raising.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_array_contains_id_fast(
+    data: RawJsonb,
+    array_path: &str,
+    id_key: &str,
+    id_value: RawJsonb,
+) -> bool {
+    crate::array_ops::validate_match_key(id_key).unwrap_or_else(|e| error!("{}", e));
+    if !is_object(&data) {
+        return false;
+    }
+    // Reason: pointers come from detoasted datums; nothing is allocated here.
+    unsafe {
+        let mut key = key_value(array_path);
+        let found =
+            pg_sys::findJsonbValueFromContainer(data.container(), pg_sys::JB_FOBJECT, &raw mut key);
+        if found.is_null() || (*found).type_ != pg_sys::jbvType::jbvBinary {
+            return false;
+        }
+        let array = (*found).val.binary.data;
+        if (*array).header & pg_sys::JB_FARRAY == 0 {
+            return false;
+        }
+
+        let target = root_as_value(&id_value);
+        let mut it = pg_sys::JsonbIteratorInit(array);
+        let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut ev, true);
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut ev, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                return false;
+            }
+            if element_matches(&ev, id_key, &target) {
+                return true;
+            }
+        }
+    }
+}
+
+/// Read a top-level `key` as text, for string and number values.
+///
+/// Behaviourally identical to `jsonb_extract_id`: anything else -- a boolean, an
+/// object, an array, a missing key, a non-object document -- yields NULL.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe)]
+fn jsonb_extract_id_fast(data: RawJsonb, key: default!(&str, "'id'")) -> Option<String> {
+    if !is_object(&data) {
+        return None;
+    }
+    // Reason: pointers come from detoasted datums; the only allocation is the
+    // returned String, which Rust owns.
+    unsafe {
+        let mut k = key_value(key);
+        let found =
+            pg_sys::findJsonbValueFromContainer(data.container(), pg_sys::JB_FOBJECT, &raw mut k);
+        if found.is_null() {
+            return None;
+        }
+        match (*found).type_ {
+            pg_sys::jbvType::jbvString => {
+                let n = usize::try_from((*found).val.string.len).unwrap_or(0);
+                let bytes = std::slice::from_raw_parts((*found).val.string.val.cast::<u8>(), n);
+                // jsonb strings are validated UTF-8 on the way in.
+                Some(String::from_utf8_lossy(bytes).into_owned())
+            }
+            // Rendered by PostgreSQL's own numeric output, which is the canonical
+            // spelling and matches what the serde version produced.
+            pg_sys::jbvType::jbvNumeric => {
+                pgrx::AnyNumeric::from_datum(pg_sys::Datum::from((*found).val.numeric), false)
+                    .map(|n| n.to_string())
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Differential tests against the native `||` operator.
 ///
 /// Every case asserts equality with `||` rather than against a hand-written
@@ -721,6 +1061,146 @@ mod tests {
         .expect("SPI ok")
         .expect("not null");
         assert!(matched, "2.0 should match an id of 2, as it does in SQL");
+    }
+
+    #[pg_test]
+    fn smart_patch_scalar_matches_serde() {
+        assert_matches_serde(
+            r#"jsonb_smart_patch_scalar_fast('{"a":1,"b":{"n":1}}','{"b":2,"c":3}')"#,
+            r#"jsonb_smart_patch_scalar('{"a":1,"b":{"n":1}}','{"b":2,"c":3}')"#,
+        );
+    }
+
+    #[pg_test]
+    fn smart_patch_array_matches_serde() {
+        for key in ["2", "1", "99"] {
+            assert_matches_serde(
+                &format!(
+                    "jsonb_smart_patch_array_fast('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"
+                ),
+                &format!("jsonb_smart_patch_array('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"),
+            );
+        }
+    }
+
+    #[pg_test(error = "Path 'nope' does not exist in document")]
+    fn smart_patch_array_errors_on_missing_path() {
+        Spi::run("SELECT jsonb_smart_patch_array_fast('{\"a\":1}','{}','nope','id','1')")
+            .expect("SPI ok");
+    }
+
+    #[pg_test]
+    fn contains_id_matches_serde() {
+        for (path, key, val) in [
+            ("posts", "id", "2"),
+            ("posts", "id", "99"),
+            ("nope", "id", "2"),
+        ] {
+            let same = Spi::get_one::<bool>(&format!(
+                "SELECT jsonb_array_contains_id_fast('{DOC}','{path}','{key}','{val}')
+                      = jsonb_array_contains_id('{DOC}','{path}','{key}','{val}')"
+            ))
+            .expect("SPI ok")
+            .expect("not null");
+            assert!(same, "contains_id disagreed for {path}/{key}/{val}");
+        }
+    }
+
+    #[pg_test]
+    fn extract_id_matches_serde() {
+        for doc in [
+            r#"{"id":"abc","x":1}"#,
+            r#"{"id":123}"#,
+            r#"{"id":true}"#,
+            r#"{"id":{"n":1}}"#,
+            r#"{"id":[1]}"#,
+            r#"{"id":null}"#,
+            r#"{"other":1}"#,
+        ] {
+            let same = Spi::get_one::<bool>(&format!(
+                "SELECT jsonb_extract_id_fast('{doc}','id') IS NOT DISTINCT FROM
+                        jsonb_extract_id('{doc}','id')"
+            ))
+            .expect("SPI ok")
+            .expect("not null");
+            assert!(same, "extract_id disagreed for {doc}");
+        }
+    }
+
+    #[pg_test]
+    fn batch_update_matches_serde() {
+        let specs =
+            r#"[{"match_value":1,"updates":{"t":"X"}},{"match_value":3,"updates":{"t":"Y"}}]"#;
+        assert_matches_serde(
+            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+        );
+    }
+
+    /// Every element matching a spec is updated, including duplicates -- the
+    /// fixture carries two id=2 and both must change.
+    #[pg_test]
+    fn batch_update_hits_every_match() {
+        let specs = r#"[{"match_value":2,"updates":{"t":"X"}}]"#;
+        assert_matches_serde(
+            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+        );
+    }
+
+    #[pg_test]
+    fn batch_update_skips_malformed_specs() {
+        let specs = r#"[{"match_value":1},{"nope":true},7,{"match_value":3,"updates":{"t":"Y"}}]"#;
+        assert_matches_serde(
+            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+        );
+    }
+
+    #[pg_test(error = "Path 'nope' does not exist in document")]
+    fn batch_update_errors_on_missing_path() {
+        Spi::run("SELECT jsonb_array_update_where_batch_fast('{\"p\":[]}','nope','id','[]')")
+            .expect("SPI ok");
+    }
+
+    #[pg_test(error = "updates_array must be a JSONB array")]
+    fn batch_update_errors_on_non_array_specs() {
+        Spi::run("SELECT jsonb_array_update_where_batch_fast('{\"p\":[]}','p','id','{}')")
+            .expect("SPI ok");
+    }
+
+    /// `jsonb_extract_id` round-trips numbers through `serde_json`, which parses
+    /// into `f64` and so renders `1.50` as `1.5`. Reading the stored numeric
+    /// directly preserves the scale, which is what `->>` gives:
+    /// `'{"id":1.50}'::jsonb ->> 'id'` is `1.50`. Asserting the SQL-consistent
+    /// answer, and noting the divergence rather than hiding it.
+    #[pg_test]
+    fn extract_id_preserves_numeric_scale() {
+        let got = Spi::get_one::<String>(r#"SELECT jsonb_extract_id_fast('{"id":1.50}','id')"#)
+            .expect("SPI ok")
+            .expect("not null");
+        assert_eq!(got, "1.50");
+        let pg = Spi::get_one::<String>(r#"SELECT '{"id":1.50}'::jsonb ->> 'id'"#)
+            .expect("SPI ok")
+            .expect("not null");
+        assert_eq!(got, pg, "should agree with the ->> operator");
+    }
+
+    /// The serde version reads `match_value` with `as_i64`, so text keys silently
+    /// matched nothing. This is the one case where the binary version is
+    /// deliberately more capable, so it is asserted directly rather than
+    /// differentially.
+    #[pg_test]
+    fn batch_update_now_supports_text_keys() {
+        let doc = r#"{"p":[{"id":"a","t":"x"},{"id":"b","t":"y"}]}"#;
+        let specs = r#"[{"match_value":"b","updates":{"t":"Z"}}]"#;
+        let got = Spi::get_one::<bool>(&format!(
+            r#"SELECT jsonb_array_update_where_batch_fast('{doc}','p','id','{specs}')
+                    = '{{"p":[{{"id":"a","t":"x"}},{{"id":"b","t":"Z"}}]}}'::jsonb"#
+        ))
+        .expect("SPI ok")
+        .expect("not null");
+        assert!(got, "text match_value should now batch-update");
     }
 
     #[pg_test]
