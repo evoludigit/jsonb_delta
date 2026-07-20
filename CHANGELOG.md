@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance
+- **Ten functions now operate on PostgreSQL's binary JSONB representation instead of round-tripping the document through `serde_json`.** Measurement showed the round trip *was* essentially the entire cost: on a 1000-element document a no-op parse-and-re-serialize took 2.45 ms while a real update took 2.25 ms, so the matching and mutation these functions perform were not measurable next to the conversion. Worse, the conversion ran through a *text* form — `pgrx::JsonB` renders the document with `jsonb_out`, parses that with `serde_json`, and reverses both steps on return. Walking the binary form lets untouched keys and array elements pass through as pointers into the source document, so cost now tracks what actually changes rather than document size.
+
+  Measured against the native SQL each function is documented as replacing (release build, 1000-element array, medians of 10 trials):
+
+  | Function | Before | After |
+  |---|---|---|
+  | `jsonb_array_update_where` | 1.34× | **3.40×** |
+  | `jsonb_array_delete_where` | 1.35× | **3.55×** |
+  | `jsonb_merge_shallow` | 0.31× (slower than `\|\|`) | **1.01× (parity)** |
+  | `jsonb_array_contains_id` | — | **6.17×** vs the previous implementation |
+  | `jsonb_extract_id` | — | **6.05×** vs the previous implementation |
+
+  The ratio for `update` and `delete` now **rises** with array size (2.6× → 3.4× from 10 to 1000 elements) where previously it fell (2.0× → 1.3×). Falling with size was the substance of the complaint in #15.
+
+  Also ported: `jsonb_smart_patch_scalar`, `jsonb_smart_patch_array`, `jsonb_smart_patch_nested`, `jsonb_merge_at_path`, `jsonb_array_update_where_batch`. The SQL API is unchanged — same names, arguments, volatility and strictness — so no migration is required.
+
+### Fixed
+- **`jsonb_array_update_where` and friends now match numbers by value rather than by representation.** A `match_value` of `2.0` previously failed to match an element whose id was `2`, because the comparison went through `serde_json::Number`. SQL considers them equal (`'2'::jsonb = '2.0'::jsonb` is true), and so does containment, so a caller passing `to_jsonb(2.0)` or a numeric column silently matched nothing.
+- **`jsonb_array_update_where_batch` can now match text and UUID keys.** It read `match_value` with `as_i64` and silently dropped every spec that was not an integer, so non-integer keys could not be batched at all.
+- **`jsonb_extract_id` no longer loses numeric precision.** It parsed through `f64`, rendering `1.50` as `1.5`. It now returns `1.50`, agreeing with the `->>` operator.
+
+  All three affect only inputs that previously matched nothing or returned a lossy value; no call that worked before changes behaviour.
+
 ### Added
 - **`jsonb_apply_changeset(doc, ops)`** — apply an ordered list of surgical edits to a JSONB document in a **single parse/serialize pass**. `ops` is a JSONB array of typed operations: `set`, `remove`, `merge`, `deep_merge`, `increment`, `array_update`, `array_update_all`, `array_replace`, `array_upsert`, `array_delete`, `array_insert`. Paths may be dot-notation strings (`"a.b[0].c"`) or segment arrays (`["a", "b", 0, "c"]`), and array matching works for any key type (int / text / **UUID**). Intended for incremental-view-maintenance callers (e.g. `pg_tviews`) that coalesce many changes to one row per transaction: replacing a chain of N `jsonb_smart_patch_*` calls with a single `jsonb_apply_changeset` amortizes the whole-document (de)serialization across the entire changeset, so the advantage grows with the number of coalesced edits. Quantified speedups are pending measurement under the project's benchmark methodology (release build, median/p95); see `test/benchmark_changeset.sql`.
 

@@ -114,9 +114,15 @@ pub use path::*;
 /// FROM tv_user
 /// WHERE jsonb_extract_id(data, 'company_id') = '123';
 /// ```
+// Retained only as the differential-test oracle for the binary
+// implementation that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe)]
-fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(immutable, parallel_safe, name = "jsonb_extract_id_reference")
+)]
+fn jsonb_extract_id_reference(data: JsonB, key: default!(&str, "'id'")) -> Option<String> {
     let obj = data.0.as_object()?;
     let id_value = obj.get(key)?;
 
@@ -191,9 +197,25 @@ fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> 
 /// SELECT pk_feed FROM tv_feed
 /// WHERE jsonb_array_contains_id(data, 'posts', 'id', '123'::jsonb);
 /// ```
+// Retained only as the differential-test oracle for the binary
+// implementation that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_contains_id_reference"
+    )
+)]
+fn jsonb_array_contains_id_reference(
+    data: JsonB,
+    array_path: &str,
+    id_key: &str,
+    id_value: JsonB,
+) -> bool {
     validate_match_key(id_key).unwrap_or_else(|e| error!("{}", e));
 
     let Some(obj) = data.0.as_object() else {

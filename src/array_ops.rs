@@ -62,8 +62,16 @@ pub(crate) fn validate_match_key(key: &str) -> Result<(), String> {
 /// - O(n) complexity where n = array length
 /// - For nested paths, use `jsonb_set` with `jsonb_array_update_where`
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-pub fn jsonb_array_update_where(
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_update_where_reference"
+    )
+)]
+pub fn jsonb_array_update_where_reference(
     target: JsonB,
     array_path: &str,
     match_key: &str,
@@ -144,8 +152,16 @@ pub fn jsonb_array_update_where(
 /// - Single pass for multiple updates
 /// - 2-5× faster than N separate function calls
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-pub fn jsonb_array_update_where_batch(
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_update_where_batch_reference"
+    )
+)]
+pub fn jsonb_array_update_where_batch_reference(
     target: JsonB,
     array_path: &str,
     match_key: &str,
@@ -279,7 +295,7 @@ pub fn jsonb_array_update_multi_row(
     // Create iterator that will be returned as SETOF
     TableIterator::new(targets_vec.into_iter().map(move |target| {
         // Call single-row update for each document
-        let result = jsonb_array_update_where(
+        let result = jsonb_array_update_where_reference(
             target,
             &array_path_owned,
             &match_key_owned,
@@ -341,9 +357,17 @@ pub fn jsonb_array_update_multi_row(
 /// )
 /// WHERE data->'posts' @> jsonb_build_array(jsonb_build_object('id', OLD.pk_post));
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_delete_where_reference"
+    )
+)]
 #[must_use]
-pub fn jsonb_array_delete_where(
+pub fn jsonb_array_delete_where_reference(
     target: JsonB,
     array_path: &str,
     match_key: &str,

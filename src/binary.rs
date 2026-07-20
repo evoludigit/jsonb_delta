@@ -172,7 +172,7 @@ fn is_object(j: &RawJsonb) -> bool {
 // point from the by-value signature, so a reference is not expressible here.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_merge_shallow_fast(target: RawJsonb, source: RawJsonb) -> RawJsonb {
+fn jsonb_merge_shallow(target: RawJsonb, source: RawJsonb) -> RawJsonb {
     if !is_object(&target) {
         error!("target argument must be a JSONB object");
     }
@@ -483,7 +483,7 @@ unsafe fn root_as_value(j: &RawJsonb) -> pg_sys::JsonbValue {
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_update_where_fast(
+fn jsonb_array_update_where(
     target: RawJsonb,
     array_path: &str,
     match_key: &str,
@@ -521,7 +521,7 @@ fn jsonb_array_update_where_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_delete_where_fast(
+fn jsonb_array_delete_where(
     target: RawJsonb,
     array_path: &str,
     match_key: &str,
@@ -564,8 +564,8 @@ fn jsonb_array_delete_where_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_smart_patch_scalar_fast(target: RawJsonb, source: RawJsonb) -> RawJsonb {
-    jsonb_merge_shallow_fast(target, source)
+fn jsonb_smart_patch_scalar(target: RawJsonb, source: RawJsonb) -> RawJsonb {
+    jsonb_merge_shallow(target, source)
 }
 
 /// Merge `source` into the first array element matching `match_key`.
@@ -575,7 +575,7 @@ fn jsonb_smart_patch_scalar_fast(target: RawJsonb, source: RawJsonb) -> RawJsonb
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_smart_patch_array_fast(
+fn jsonb_smart_patch_array(
     target: RawJsonb,
     source: RawJsonb,
     array_path: &str,
@@ -620,7 +620,7 @@ fn jsonb_smart_patch_array_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_update_where_batch_fast(
+fn jsonb_array_update_where_batch(
     target: RawJsonb,
     array_path: &str,
     match_key: &str,
@@ -1012,11 +1012,7 @@ unsafe fn push_merged_at_path(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_merge_at_path_fast(
-    target: RawJsonb,
-    source: RawJsonb,
-    path: pgrx::Array<&str>,
-) -> RawJsonb {
+fn jsonb_merge_at_path(target: RawJsonb, source: RawJsonb, path: pgrx::Array<&str>) -> RawJsonb {
     // Reason: pointers come from detoasted datums and the palloc'ing builder.
     unsafe {
         let source_root = root_as_value(&source);
@@ -1039,7 +1035,7 @@ fn jsonb_merge_at_path_fast(
                     jsonb_type_name(&t)
                 );
             }
-            return jsonb_merge_shallow_fast(target, source);
+            return jsonb_merge_shallow(target, source);
         }
 
         let root = root_as_value(&target);
@@ -1063,12 +1059,12 @@ fn jsonb_merge_at_path_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_smart_patch_nested_fast(
+fn jsonb_smart_patch_nested(
     target: RawJsonb,
     source: RawJsonb,
     path: pgrx::Array<&str>,
 ) -> RawJsonb {
-    jsonb_merge_at_path_fast(target, source, path)
+    jsonb_merge_at_path(target, source, path)
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,7 +1083,7 @@ fn jsonb_smart_patch_nested_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_contains_id_fast(
+fn jsonb_array_contains_id(
     data: RawJsonb,
     array_path: &str,
     id_key: &str,
@@ -1133,7 +1129,7 @@ fn jsonb_array_contains_id_fast(
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
 #[pg_extern(immutable, parallel_safe)]
-fn jsonb_extract_id_fast(data: RawJsonb, key: default!(&str, "'id'")) -> Option<String> {
+fn jsonb_extract_id(data: RawJsonb, key: default!(&str, "'id'")) -> Option<String> {
     if !is_object(&data) {
         return None;
     }
@@ -1177,10 +1173,10 @@ fn jsonb_extract_id_fast(data: RawJsonb, key: default!(&str, "'id'")) -> Option<
 mod tests {
     use pgrx::prelude::*;
 
-    /// Assert `jsonb_merge_shallow_fast(a, b)` matches `a || b`.
+    /// Assert `jsonb_merge_shallow(a, b)` matches `a || b`.
     fn assert_matches_concat(a: &str, b: &str) {
         let same = Spi::get_one::<bool>(&format!(
-            "SELECT jsonb_merge_shallow_fast('{a}'::jsonb, '{b}'::jsonb) = '{a}'::jsonb || '{b}'::jsonb"
+            "SELECT jsonb_merge_shallow('{a}'::jsonb, '{b}'::jsonb) = '{a}'::jsonb || '{b}'::jsonb"
         ))
         .expect("SPI ok")
         .expect("not null");
@@ -1261,8 +1257,10 @@ mod tests {
             ("2", r#"{"x":true}"#),
         ] {
             assert_matches_serde(
-                &format!("jsonb_array_update_where_fast('{DOC}','posts','id','{key}','{upd}')"),
                 &format!("jsonb_array_update_where('{DOC}','posts','id','{key}','{upd}')"),
+                &format!(
+                    "jsonb_array_update_where_reference('{DOC}','posts','id','{key}','{upd}')"
+                ),
             );
         }
     }
@@ -1271,8 +1269,10 @@ mod tests {
     #[pg_test]
     fn array_update_touches_only_the_first_match() {
         assert_matches_serde(
-            &format!("jsonb_array_update_where_fast('{DOC}','posts','id','2','{{\"t\":\"Z\"}}')"),
             &format!("jsonb_array_update_where('{DOC}','posts','id','2','{{\"t\":\"Z\"}}')"),
+            &format!(
+                "jsonb_array_update_where_reference('{DOC}','posts','id','2','{{\"t\":\"Z\"}}')"
+            ),
         );
     }
 
@@ -1280,8 +1280,8 @@ mod tests {
     fn array_delete_matches_serde() {
         for key in ["2", "1", "99"] {
             assert_matches_serde(
-                &format!("jsonb_array_delete_where_fast('{DOC}','posts','id','{key}')"),
                 &format!("jsonb_array_delete_where('{DOC}','posts','id','{key}')"),
+                &format!("jsonb_array_delete_where_reference('{DOC}','posts','id','{key}')"),
             );
         }
     }
@@ -1291,21 +1291,20 @@ mod tests {
     #[pg_test]
     fn delete_on_missing_path_is_a_no_op() {
         assert_matches_serde(
-            &format!("jsonb_array_delete_where_fast('{DOC}','nope','id','2')"),
             &format!("jsonb_array_delete_where('{DOC}','nope','id','2')"),
+            &format!("jsonb_array_delete_where_reference('{DOC}','nope','id','2')"),
         );
     }
 
     #[pg_test(error = "Path 'nope' does not exist in document")]
     fn update_on_missing_path_errors() {
-        Spi::run("SELECT jsonb_array_update_where_fast('{\"a\":1}','nope','id','1','{}')")
+        Spi::run("SELECT jsonb_array_update_where('{\"a\":1}','nope','id','1','{}')")
             .expect("SPI ok");
     }
 
     #[pg_test(error = "match_key must not be empty")]
     fn empty_match_key_is_rejected() {
-        Spi::run("SELECT jsonb_array_update_where_fast('{\"p\":[]}','p','','1','{}')")
-            .expect("SPI ok");
+        Spi::run("SELECT jsonb_array_update_where('{\"p\":[]}','p','','1','{}')").expect("SPI ok");
     }
 
     #[pg_test]
@@ -1313,10 +1312,10 @@ mod tests {
         let doc = r#"{"posts":[{"id":"a-1","t":"x"},{"id":"3f2a-uuid","t":"y"}]}"#;
         assert_matches_serde(
             &format!(
-                r#"jsonb_array_update_where_fast('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
+                r#"jsonb_array_update_where('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
             ),
             &format!(
-                r#"jsonb_array_update_where('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
+                r#"jsonb_array_update_where_reference('{doc}','posts','id','"3f2a-uuid"','{{"t":"Z"}}')"#
             ),
         );
     }
@@ -1332,7 +1331,7 @@ mod tests {
     #[pg_test]
     fn numbers_match_by_value_not_by_scale() {
         let matched = Spi::get_one::<bool>(
-            r#"SELECT jsonb_array_update_where_fast('{"p":[{"id":2,"t":"a"}]}','p','id','2.0','{"t":"Z"}')
+            r#"SELECT jsonb_array_update_where('{"p":[{"id":2,"t":"a"}]}','p','id','2.0','{"t":"Z"}')
                     = '{"p":[{"id":2,"t":"Z"}]}'::jsonb"#,
         )
         .expect("SPI ok")
@@ -1343,8 +1342,8 @@ mod tests {
     #[pg_test]
     fn smart_patch_scalar_matches_serde() {
         assert_matches_serde(
-            r#"jsonb_smart_patch_scalar_fast('{"a":1,"b":{"n":1}}','{"b":2,"c":3}')"#,
             r#"jsonb_smart_patch_scalar('{"a":1,"b":{"n":1}}','{"b":2,"c":3}')"#,
+            r#"jsonb_smart_patch_scalar_reference('{"a":1,"b":{"n":1}}','{"b":2,"c":3}')"#,
         );
     }
 
@@ -1353,16 +1352,16 @@ mod tests {
         for key in ["2", "1", "99"] {
             assert_matches_serde(
                 &format!(
-                    "jsonb_smart_patch_array_fast('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"
+                    "jsonb_smart_patch_array('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"
                 ),
-                &format!("jsonb_smart_patch_array('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"),
+                &format!("jsonb_smart_patch_array_reference('{DOC}','{{\"t\":\"Z\"}}','posts','id','{key}')"),
             );
         }
     }
 
     #[pg_test(error = "Path 'nope' does not exist in document")]
     fn smart_patch_array_errors_on_missing_path() {
-        Spi::run("SELECT jsonb_smart_patch_array_fast('{\"a\":1}','{}','nope','id','1')")
+        Spi::run("SELECT jsonb_smart_patch_array('{\"a\":1}','{}','nope','id','1')")
             .expect("SPI ok");
     }
 
@@ -1374,8 +1373,8 @@ mod tests {
             ("nope", "id", "2"),
         ] {
             let same = Spi::get_one::<bool>(&format!(
-                "SELECT jsonb_array_contains_id_fast('{DOC}','{path}','{key}','{val}')
-                      = jsonb_array_contains_id('{DOC}','{path}','{key}','{val}')"
+                "SELECT jsonb_array_contains_id('{DOC}','{path}','{key}','{val}')
+                      = jsonb_array_contains_id_reference('{DOC}','{path}','{key}','{val}')"
             ))
             .expect("SPI ok")
             .expect("not null");
@@ -1395,8 +1394,8 @@ mod tests {
             r#"{"other":1}"#,
         ] {
             let same = Spi::get_one::<bool>(&format!(
-                "SELECT jsonb_extract_id_fast('{doc}','id') IS NOT DISTINCT FROM
-                        jsonb_extract_id('{doc}','id')"
+                "SELECT jsonb_extract_id('{doc}','id') IS NOT DISTINCT FROM
+                        jsonb_extract_id_reference('{doc}','id')"
             ))
             .expect("SPI ok")
             .expect("not null");
@@ -1409,8 +1408,8 @@ mod tests {
         let specs =
             r#"[{"match_value":1,"updates":{"t":"X"}},{"match_value":3,"updates":{"t":"Y"}}]"#;
         assert_matches_serde(
-            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
             &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch_reference('{DOC}','posts','id','{specs}')"),
         );
     }
 
@@ -1420,8 +1419,8 @@ mod tests {
     fn batch_update_hits_every_match() {
         let specs = r#"[{"match_value":2,"updates":{"t":"X"}}]"#;
         assert_matches_serde(
-            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
             &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch_reference('{DOC}','posts','id','{specs}')"),
         );
     }
 
@@ -1429,20 +1428,20 @@ mod tests {
     fn batch_update_skips_malformed_specs() {
         let specs = r#"[{"match_value":1},{"nope":true},7,{"match_value":3,"updates":{"t":"Y"}}]"#;
         assert_matches_serde(
-            &format!("jsonb_array_update_where_batch_fast('{DOC}','posts','id','{specs}')"),
             &format!("jsonb_array_update_where_batch('{DOC}','posts','id','{specs}')"),
+            &format!("jsonb_array_update_where_batch_reference('{DOC}','posts','id','{specs}')"),
         );
     }
 
     #[pg_test(error = "Path 'nope' does not exist in document")]
     fn batch_update_errors_on_missing_path() {
-        Spi::run("SELECT jsonb_array_update_where_batch_fast('{\"p\":[]}','nope','id','[]')")
+        Spi::run("SELECT jsonb_array_update_where_batch('{\"p\":[]}','nope','id','[]')")
             .expect("SPI ok");
     }
 
     #[pg_test(error = "updates_array must be a JSONB array")]
     fn batch_update_errors_on_non_array_specs() {
-        Spi::run("SELECT jsonb_array_update_where_batch_fast('{\"p\":[]}','p','id','{}')")
+        Spi::run("SELECT jsonb_array_update_where_batch('{\"p\":[]}','p','id','{}')")
             .expect("SPI ok");
     }
 
@@ -1453,7 +1452,7 @@ mod tests {
     /// answer, and noting the divergence rather than hiding it.
     #[pg_test]
     fn extract_id_preserves_numeric_scale() {
-        let got = Spi::get_one::<String>(r#"SELECT jsonb_extract_id_fast('{"id":1.50}','id')"#)
+        let got = Spi::get_one::<String>(r#"SELECT jsonb_extract_id('{"id":1.50}','id')"#)
             .expect("SPI ok")
             .expect("not null");
         assert_eq!(got, "1.50");
@@ -1472,7 +1471,7 @@ mod tests {
         let doc = r#"{"p":[{"id":"a","t":"x"},{"id":"b","t":"y"}]}"#;
         let specs = r#"[{"match_value":"b","updates":{"t":"Z"}}]"#;
         let got = Spi::get_one::<bool>(&format!(
-            r#"SELECT jsonb_array_update_where_batch_fast('{doc}','p','id','{specs}')
+            r#"SELECT jsonb_array_update_where_batch('{doc}','p','id','{specs}')
                     = '{{"p":[{{"id":"a","t":"x"}},{{"id":"b","t":"Z"}}]}}'::jsonb"#
         ))
         .expect("SPI ok")
@@ -1540,8 +1539,8 @@ mod tests {
         ];
         for (t, src, path) in cases {
             assert_same_outcome(
-                &format!("jsonb_merge_at_path_fast({t},{src},{path})"),
                 &format!("jsonb_merge_at_path({t},{src},{path})"),
+                &format!("jsonb_merge_at_path_reference({t},{src},{path})"),
             );
         }
     }
@@ -1570,8 +1569,8 @@ mod tests {
         ];
         for (t, src, path) in cases {
             assert_same_outcome(
-                &format!("jsonb_merge_at_path_fast({t},{src},{path})"),
                 &format!("jsonb_merge_at_path({t},{src},{path})"),
+                &format!("jsonb_merge_at_path_reference({t},{src},{path})"),
             );
         }
     }
@@ -1579,16 +1578,16 @@ mod tests {
     #[pg_test]
     fn smart_patch_nested_matches_serde() {
         assert_same_outcome(
-            r#"jsonb_smart_patch_nested_fast('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
             r#"jsonb_smart_patch_nested('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
+            r#"jsonb_smart_patch_nested_reference('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
         );
     }
 
     #[pg_test]
     fn agrees_with_the_serde_implementation_it_replaces() {
         let same = Spi::get_one::<bool>(
-            r#"SELECT jsonb_merge_shallow_fast('{"a":1,"b":{"n":1}}'::jsonb, '{"b":2,"c":3}'::jsonb)
-                    = jsonb_merge_shallow('{"a":1,"b":{"n":1}}'::jsonb, '{"b":2,"c":3}'::jsonb)"#,
+            r#"SELECT jsonb_merge_shallow('{"a":1,"b":{"n":1}}'::jsonb, '{"b":2,"c":3}'::jsonb)
+                    = jsonb_merge_shallow_reference('{"a":1,"b":{"n":1}}'::jsonb, '{"b":2,"c":3}'::jsonb)"#,
         )
         .expect("SPI ok")
         .expect("not null");
