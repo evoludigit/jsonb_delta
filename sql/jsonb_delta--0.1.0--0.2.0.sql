@@ -26,7 +26,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_contains_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:340
+-- src/array_ops.rs:344
 -- jsonb_delta::array_ops::jsonb_array_delete_where
 CREATE OR REPLACE FUNCTION "jsonb_array_delete_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -40,7 +40,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_delete_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:432
+-- src/array_ops.rs:436
 -- jsonb_delta::array_ops::jsonb_array_insert_where
 CREATE OR REPLACE FUNCTION "jsonb_array_insert_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -55,7 +55,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_insert_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:251
+-- src/array_ops.rs:255
 -- jsonb_delta::array_ops::jsonb_array_update_multi_row
 CREATE OR REPLACE FUNCTION "jsonb_array_update_multi_row"(
 	"targets" jsonb[], /* pgrx::datum::array::Array<'_, pgrx::datum::json::JsonB> */
@@ -72,7 +72,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_multi_row_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:61
+-- src/array_ops.rs:65
 -- jsonb_delta::array_ops::jsonb_array_update_where
 CREATE OR REPLACE FUNCTION "jsonb_array_update_where"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */
@@ -87,7 +87,7 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:143
+-- src/array_ops.rs:147
 -- jsonb_delta::array_ops::jsonb_array_update_where_batch
 CREATE OR REPLACE FUNCTION "jsonb_array_update_where_batch"(
 	"target" jsonb, /* pgrx::datum::json::JsonB */

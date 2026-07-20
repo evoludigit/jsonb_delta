@@ -109,8 +109,8 @@ mod property_tests {
     // Helper: check if a Vec<Value> is sorted ascending by key "val"
     fn is_sorted_by_val(arr: &[Value]) -> bool {
         arr.windows(2).all(|w| {
-            let a = w[0].get("val").and_then(|v| v.as_i64()).unwrap_or(i64::MIN);
-            let b = w[1].get("val").and_then(|v| v.as_i64()).unwrap_or(i64::MIN);
+            let a = w[0].get("val").and_then(Value::as_i64).unwrap_or(i64::MIN);
+            let b = w[1].get("val").and_then(Value::as_i64).unwrap_or(i64::MIN);
             a <= b
         })
     }
@@ -130,6 +130,7 @@ mod property_tests {
 
     /// After deleting a present element, the array length decreases by exactly 1.
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)] // quickcheck's Arbitrary requires owned args
     fn prop_array_delete_reduces_length(elements: Vec<u8>) -> TestResult {
         if elements.is_empty() {
             return TestResult::discard();
@@ -144,7 +145,7 @@ mod property_tests {
 
         let _target = Value::Object(serde_json::Map::from_iter([(
             "items".to_string(),
-            Value::Array(arr.clone()),
+            Value::Array(arr),
         )]));
 
         // This would require calling the internal array delete logic
@@ -152,8 +153,9 @@ mod property_tests {
         TestResult::passed()
     }
 
-    /// deep_merge(a, a) == a for any object a.
+    /// `deep_merge(a, a) == a` for any object a.
     #[quickcheck]
+    #[allow(clippy::needless_pass_by_value)] // quickcheck's Arbitrary requires owned args
     fn prop_deep_merge_self_is_identity(val: ArbJsonB) -> TestResult {
         // Only run for objects
         if !val.0.is_object() {
