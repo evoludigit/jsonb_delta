@@ -795,6 +795,283 @@ unsafe fn rebuild_with_batch_updates(
 }
 
 // ---------------------------------------------------------------------------
+// Nested-path merge
+//
+// The first port here that is not a flat rebuild. `jsonb_merge_at_path` descends
+// a path and *creates missing intermediate objects*, so the rebuild has to
+// recurse and be able to synthesize a chain that was never in the document.
+//
+// Only the spine is rebuilt: at each level every key except the one on the path
+// is handed through as a binary value, so a wide object costs no more than a
+// narrow one.
+// ---------------------------------------------------------------------------
+
+/// Type name matching `crate::value_type_name`, so error text is identical.
+///
+/// # Safety
+///
+/// `v` must be an initialized `JsonbValue` whose payload outlives the call.
+unsafe fn jsonb_type_name(v: &pg_sys::JsonbValue) -> &'static str {
+    unsafe {
+        match v.type_ {
+            pg_sys::jbvType::jbvNull => "null",
+            pg_sys::jbvType::jbvBool => "boolean",
+            pg_sys::jbvType::jbvNumeric => "number",
+            pg_sys::jbvType::jbvString => "string",
+            pg_sys::jbvType::jbvArray => "array",
+            pg_sys::jbvType::jbvObject => "object",
+            pg_sys::jbvType::jbvBinary => {
+                if (*v.val.binary.data).header & pg_sys::JB_FARRAY == 0 {
+                    "object"
+                } else {
+                    "array"
+                }
+            }
+            _ => "unknown",
+        }
+    }
+}
+
+/// The object container behind a value, or null when it is not an object.
+///
+/// # Safety
+///
+/// `v` must be an initialized `JsonbValue` whose payload outlives the call.
+unsafe fn object_container(v: &pg_sys::JsonbValue) -> *mut pg_sys::JsonbContainer {
+    unsafe {
+        if v.type_ == pg_sys::jbvType::jbvBinary
+            && (*v.val.binary.data).header & pg_sys::JB_FOBJECT != 0
+        {
+            v.val.binary.data
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// The object container for a level of the path, or null when the key was absent.
+///
+/// Raises with the serde version's exact wording when the level exists but is not
+/// an object. The message and the slice of the path it quotes both depend on
+/// whether this is the last segment, which is reproduced rather than tidied.
+///
+/// # Safety
+///
+/// `node`'s payload must outlive the call; `path` must be non-empty.
+unsafe fn resolve_path_object(
+    node: Option<&pg_sys::JsonbValue>,
+    path: &[&str],
+    full: &[&str],
+    depth: usize,
+) -> *mut pg_sys::JsonbContainer {
+    unsafe {
+        let Some(v) = node else {
+            return std::ptr::null_mut();
+        };
+        let c = object_container(v);
+        if c.is_null() {
+            if path.len() == 1 {
+                error!(
+                    "Path navigation failed: expected object at {:?}, got: {}",
+                    &full[..depth],
+                    jsonb_type_name(v)
+                );
+            } else {
+                error!(
+                    "Path navigation failed at {:?}, expected object, got: {}",
+                    &full[..=depth],
+                    jsonb_type_name(v)
+                );
+            }
+        }
+        c
+    }
+}
+
+/// Push a complete object value: `node`, with `source` shallow-merged in at `path`.
+///
+/// `node` of `None` means the key was absent, which the serde version handles by
+/// inserting an empty object -- so a path can be created wholesale.
+///
+/// The two "path navigation failed" messages differ in wording *and* in which
+/// slice of the path they quote, depending on whether the level being indexed is
+/// the last one. That is faithfully reproduced rather than tidied, because the
+/// text is observable.
+///
+/// # Safety
+///
+/// `path` must be non-empty; all pointers must outlive the call.
+unsafe fn push_merged_at_path(
+    node: Option<&pg_sys::JsonbValue>,
+    path: &[&str],
+    full: &[&str],
+    depth: usize,
+    source: *mut pg_sys::JsonbContainer,
+    state: *mut *mut pg_sys::JsonbParseState,
+) -> *mut pg_sys::JsonbValue {
+    unsafe {
+        let container = resolve_path_object(node, path, full, depth);
+
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+
+        let mut found = false;
+        if !container.is_null() {
+            let mut it = pg_sys::JsonbIteratorInit(container);
+            let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+
+            loop {
+                let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+                if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                    break;
+                }
+                let n = usize::try_from(v.val.string.len).unwrap_or(0);
+                let is_target = v.type_ == pg_sys::jbvType::jbvString
+                    && n == path[0].len()
+                    && std::slice::from_raw_parts(v.val.string.val.cast::<u8>(), n)
+                        == path[0].as_bytes();
+
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_KEY, &raw mut v);
+                let mut child = std::mem::zeroed::<pg_sys::JsonbValue>();
+                pg_sys::JsonbIteratorNext(&raw mut it, &raw mut child, true);
+
+                if !is_target {
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_VALUE,
+                        &raw mut child,
+                    );
+                    continue;
+                }
+                found = true;
+
+                if path.len() == 1 {
+                    let target = object_container(&child);
+                    if target.is_null() {
+                        error!(
+                            "Cannot merge into non-object at path {:?}, found: {}",
+                            full,
+                            jsonb_type_name(&child)
+                        );
+                    }
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                        std::ptr::null_mut(),
+                    );
+                    push_object_pairs(target, state);
+                    push_object_pairs(source, state);
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                        std::ptr::null_mut(),
+                    );
+                } else {
+                    push_merged_at_path(Some(&child), &path[1..], full, depth + 1, source, state);
+                }
+            }
+        }
+
+        if !found {
+            // The key was absent: synthesize it, and any remaining path below it.
+            let mut k = key_value(path[0]);
+            pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_KEY, &raw mut k);
+            if path.len() == 1 {
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                    std::ptr::null_mut(),
+                );
+                push_object_pairs(source, state);
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                    std::ptr::null_mut(),
+                );
+            } else {
+                push_merged_at_path(None, &path[1..], full, depth + 1, source, state);
+            }
+        }
+
+        // The push that closes the outermost object returns the finished value.
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+/// Merge `source` into the object at `path`, creating it if absent.
+///
+/// Behaviourally identical to `jsonb_merge_at_path`, error messages included.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_merge_at_path_fast(
+    target: RawJsonb,
+    source: RawJsonb,
+    path: pgrx::Array<&str>,
+) -> RawJsonb {
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        let source_root = root_as_value(&source);
+        if object_container(&source_root).is_null() {
+            error!(
+                "source argument must be a JSONB object, got: {}",
+                jsonb_type_name(&source_root)
+            );
+        }
+        let source_c = source_root.val.binary.data;
+
+        // NULL elements are skipped, matching `path.iter().flatten()`.
+        let segments: Vec<&str> = path.iter().flatten().collect();
+
+        if segments.is_empty() {
+            if !is_object(&target) {
+                let t = root_as_value(&target);
+                error!(
+                    "target argument must be a JSONB object when path is empty, got: {}",
+                    jsonb_type_name(&t)
+                );
+            }
+            return jsonb_merge_shallow_fast(target, source);
+        }
+
+        let root = root_as_value(&target);
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        let built = push_merged_at_path(
+            Some(&root),
+            &segments,
+            &segments,
+            0,
+            source_c,
+            &raw mut state,
+        );
+        RawJsonb(pg_sys::JsonbValueToJsonb(built))
+    }
+}
+
+/// Merge `source` into the nested object at `path`.
+///
+/// Behaviourally identical to `jsonb_smart_patch_nested`, which is defined as
+/// `jsonb_merge_at_path`.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_smart_patch_nested_fast(
+    target: RawJsonb,
+    source: RawJsonb,
+    path: pgrx::Array<&str>,
+) -> RawJsonb {
+    jsonb_merge_at_path_fast(target, source, path)
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -1201,6 +1478,110 @@ mod tests {
         .expect("SPI ok")
         .expect("not null");
         assert!(got, "text match_value should now batch-update");
+    }
+
+    /// Run a fragment and return either its value as text or its error message.
+    ///
+    /// The catch happens in `plpgsql` rather than in Rust because a `PostgreSQL`
+    /// error caught without a surrounding subtransaction leaves the transaction
+    /// aborted, so the second case in a loop would fail for the wrong reason. A
+    /// plpgsql `EXCEPTION` block opens a subtransaction, making this repeatable.
+    fn outcome(sql: &str) -> String {
+        Spi::run(
+            "CREATE OR REPLACE FUNCTION pg_temp.outcome(q text) RETURNS text
+             LANGUAGE plpgsql AS $fn$
+             DECLARE r text;
+             BEGIN
+                 EXECUTE 'SELECT (' || q || ')::text' INTO r;
+                 RETURN coalesce(r, 'NULL');
+             EXCEPTION WHEN OTHERS THEN RETURN 'ERROR: ' || SQLERRM;
+             END $fn$;",
+        )
+        .expect("helper created");
+        Spi::get_one_with_args::<String>("SELECT pg_temp.outcome($1)", &[sql.into()])
+            .expect("SPI ok")
+            .expect("not null")
+    }
+
+    /// Compare a `_fast` call with its serde original on *both* the value and the
+    /// error paths. `jsonb_merge_at_path` has three distinct failure messages that
+    /// quote different slices of the path, so parity is established by running
+    /// both rather than by reading the source.
+    fn assert_same_outcome(fast: &str, serde: &str) {
+        let (a, b) = (outcome(fast), outcome(serde));
+        assert_eq!(a, b, "diverged:\n  fast:  {fast}\n  serde: {serde}");
+    }
+
+    #[pg_test]
+    fn merge_at_path_matches_serde() {
+        let cases = [
+            (
+                r#"'{"a":{"b":{"x":1}}}'"#,
+                r#"'{"y":2}'"#,
+                r"ARRAY['a','b']",
+            ),
+            (
+                r#"'{"a":{"b":{"x":1}}}'"#,
+                r#"'{"x":9}'"#,
+                r"ARRAY['a','b']",
+            ),
+            (r#"'{"a":1,"u":{"n":1}}'"#, r#"'{"m":2}'"#, r"ARRAY['u']"),
+            // path absent end to end: intermediates must be created
+            (r"'{}'", r#"'{"x":1}'"#, r"ARRAY['a','b','c']"),
+            (r#"'{"a":{}}'"#, r#"'{"x":1}'"#, r"ARRAY['a','b']"),
+            // empty path merges at the root
+            (r#"'{"a":1}'"#, r#"'{"b":2}'"#, r"ARRAY[]::text[]"),
+            // wide objects: every off-path key must survive untouched
+            (
+                r#"'{"k1":1,"k2":[1,2],"a":{"z":0},"k3":{"n":1}}'"#,
+                r#"'{"w":1}'"#,
+                r"ARRAY['a']",
+            ),
+        ];
+        for (t, src, path) in cases {
+            assert_same_outcome(
+                &format!("jsonb_merge_at_path_fast({t},{src},{path})"),
+                &format!("jsonb_merge_at_path({t},{src},{path})"),
+            );
+        }
+    }
+
+    /// The three failure modes, compared as data. Each quotes a different slice
+    /// of the path, which is exactly the kind of detail a reimplementation gets
+    /// subtly wrong.
+    #[pg_test]
+    fn merge_at_path_error_text_matches_serde() {
+        let cases = [
+            // target is not an object, empty path
+            (r"'[1,2]'", r#"'{"x":1}'"#, r"ARRAY[]::text[]"),
+            // source is not an object
+            (r#"'{"a":{}}'"#, r"'[1]'", r"ARRAY['a']"),
+            // scalar blocking the last segment
+            (r#"'{"a":5}'"#, r#"'{"x":1}'"#, r"ARRAY['a']"),
+            // scalar blocking an intermediate segment
+            (r#"'{"a":5}'"#, r#"'{"x":1}'"#, r"ARRAY['a','b']"),
+            // array blocking the last segment
+            (r#"'{"a":[1]}'"#, r#"'{"x":1}'"#, r"ARRAY['a']"),
+            // root is a scalar with a non-empty path
+            (r#"'"s"'"#, r#"'{"x":1}'"#, r"ARRAY['a']"),
+            (r#"'"s"'"#, r#"'{"x":1}'"#, r"ARRAY['a','b']"),
+            // deeper: scalar two levels down
+            (r#"'{"a":{"b":7}}'"#, r#"'{"x":1}'"#, r"ARRAY['a','b','c']"),
+        ];
+        for (t, src, path) in cases {
+            assert_same_outcome(
+                &format!("jsonb_merge_at_path_fast({t},{src},{path})"),
+                &format!("jsonb_merge_at_path({t},{src},{path})"),
+            );
+        }
+    }
+
+    #[pg_test]
+    fn smart_patch_nested_matches_serde() {
+        assert_same_outcome(
+            r#"jsonb_smart_patch_nested_fast('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
+            r#"jsonb_smart_patch_nested('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
+        );
     }
 
     #[pg_test]
