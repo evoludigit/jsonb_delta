@@ -55,7 +55,7 @@ jobs:
           sudo -u postgres psql -c "SELECT version();" || echo "PostgreSQL not ready yet"
 
       - name: Install cargo-pgrx
-        run: cargo install --locked cargo-pgrx --version 0.16.1
+        run: cargo install --locked cargo-pgrx --version 0.17.0
 
       - name: Initialize pgrx
         run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config

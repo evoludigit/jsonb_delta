@@ -110,7 +110,7 @@ Small dependency footprint:
 
 ```toml
 [dependencies]
-pgrx = "0.16.1"        # PostgreSQL bindings
+pgrx = "0.17.0"        # PostgreSQL bindings
 serde = "1.0"          # JSON serialization
 serde_json = "1.0"     # JSON value type
 ```

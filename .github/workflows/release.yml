@@ -37,7 +37,7 @@ jobs:
 
       - name: Install cargo-pgrx
         run: |
-          cargo install --locked cargo-pgrx --version 0.16.1
+          cargo install --locked cargo-pgrx --version 0.17.0
 
       - name: Initialize pgrx
         run: |

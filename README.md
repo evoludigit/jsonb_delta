@@ -470,7 +470,7 @@ Optimize materialized view maintenance with surgical JSONB updates.
 
 - PostgreSQL 13-18
 - Rust 1.70+ (for building from source)
-- pgrx 0.16.1
+- pgrx 0.17.0
 
 ---
 
