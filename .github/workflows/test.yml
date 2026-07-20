@@ -105,15 +105,30 @@ jobs:
 
       - name: Validate SQL schema generation
         run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           cargo pgrx schema pg${{ matrix.pg-version }} > /tmp/generated-schema.sql
 
-          if ! diff -u sql/jsonb_delta--0.1.0.sql /tmp/generated-schema.sql; then
+          if ! diff -u "sql/jsonb_delta--${VERSION}.sql" /tmp/generated-schema.sql; then
             echo "❌ Generated schema doesn't match committed version!"
-            echo "Run: cargo pgrx schema > sql/jsonb_delta--0.1.0.sql"
+            echo "Run: just schema"
             exit 1
           fi
 
           echo "✅ Schema generation validated"
+
+      - name: Test extension upgrade path
+        run: |
+          PG_PORT=$(sudo pg_lsclusters -h | grep "^${{ matrix.pg-version }} main" | awk '{print $3}')
+          SHAREDIR=$(/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_config --sharedir)
+
+          # cargo pgrx install ships only the current version's script; the
+          # older scripts and the upgrade scripts must be present to test
+          # ALTER EXTENSION ... UPDATE from a real 0.1.0 install.
+          sudo cp sql/jsonb_delta--*.sql "$SHAREDIR/extension/"
+
+          sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta_upgrade;" || true
+          sudo -u postgres psql -p "$PG_PORT" -c "CREATE DATABASE test_jsonb_delta_upgrade;"
+          sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta_upgrade -v ON_ERROR_STOP=1 -f test/upgrade_path_test.sql
 
       - name: Generate coverage report
         if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
