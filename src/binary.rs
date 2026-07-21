@@ -74,12 +74,12 @@ impl FromDatum for RawJsonb {
 // lifetime; the conversion defers to `FromDatum`, which detoasts. `RawJsonb`
 // holds only a raw pointer, so it satisfies `Self: 'src` for any `'src`.
 unsafe impl pgrx::datum::UnboxDatum for RawJsonb {
-    type As<'src> = RawJsonb;
+    type As<'src> = Self;
     unsafe fn unbox<'src>(d: pgrx::datum::Datum<'src>) -> Self::As<'src>
     where
         Self: 'src,
     {
-        RawJsonb::from_datum(d.sans_lifetime(), false).unwrap()
+        Self::from_datum(d.sans_lifetime(), false).unwrap()
     }
 }
 
@@ -1255,7 +1255,7 @@ fn jsonb_deep_merge(target: RawJsonb, source: RawJsonb) -> RawJsonb {
 
 /// Total-ordering rank of a jsonb value's type, mirroring `crate::compare_values`:
 /// null < bool < number < string < (array/object, which compare equal).
-fn jbv_rank(t: pg_sys::jbvType::Type) -> u8 {
+const fn jbv_rank(t: pg_sys::jbvType::Type) -> u8 {
     match t {
         pg_sys::jbvType::jbvNull => 0,
         pg_sys::jbvType::jbvBool => 1,
@@ -1267,7 +1267,7 @@ fn jbv_rank(t: pg_sys::jbvType::Type) -> u8 {
 
 /// Order two jsonb values exactly as `crate::compare_values` orders their serde
 /// equivalents: by type rank first, then within a type. Numbers compare by
-/// value through `AnyNumeric` (PostgreSQL's own numeric comparison), which for
+/// value through `AnyNumeric` (`PostgreSQL`'s own numeric comparison), which for
 /// the integer and string sort keys these functions actually use gives the same
 /// order as serde's integer-then-float path; containers compare equal.
 ///
@@ -1342,17 +1342,15 @@ unsafe fn insertion_point(
 ) -> usize {
     use std::cmp::Ordering;
     elements.partition_point(|elem| unsafe {
-        match field_of(elem, sort_key) {
-            None => true, // keyless elements sort before keyed ones
-            Some(ev) => {
-                let ord = binary_compare(&ev, new_val);
-                if is_asc {
-                    ord == Ordering::Less
-                } else {
-                    ord == Ordering::Greater
-                }
+        // None (keyless) sorts before keyed elements, hence the `true` default.
+        field_of(elem, sort_key).is_none_or(|ev| {
+            let ord = binary_compare(&ev, new_val);
+            if is_asc {
+                ord == Ordering::Less
+            } else {
+                ord == Ordering::Greater
             }
-        }
+        })
     })
 }
 
@@ -1537,47 +1535,41 @@ unsafe fn insert_into_array(
 ) {
     unsafe {
         // Append path: no sort key, or the new element has no value at it.
-        let sorted_pos = match sort_key {
-            Some(sk) => field_of(new_elem, sk).map(|nv| {
+        let sorted_pos = sort_key.and_then(|sk| {
+            field_of(new_elem, sk).map(|nv| {
                 let is_asc = sort_order.unwrap_or("ASC").eq_ignore_ascii_case("ASC");
                 let elements = collect_elements(array);
                 let pos = insertion_point(&elements, &nv, sk, is_asc);
                 (elements, pos)
-            }),
-            None => None,
-        };
+            })
+        });
 
-        match sorted_pos {
-            Some((elements, pos)) => push_array_with_insert(&elements, new_elem, pos, state),
-            None => {
-                // Append: stream existing elements through, then the new one.
-                pg_sys::pushJsonbValue(
-                    state,
-                    pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
-                    std::ptr::null_mut(),
-                );
-                let mut ait = pg_sys::JsonbIteratorInit(array);
-                let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
-                pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
-                loop {
-                    let tok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
-                    if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
-                        break;
-                    }
-                    pg_sys::pushJsonbValue(
-                        state,
-                        pg_sys::JsonbIteratorToken::WJB_ELEM,
-                        &raw mut ev,
-                    );
+        if let Some((elements, pos)) = sorted_pos {
+            push_array_with_insert(&elements, new_elem, pos, state);
+        } else {
+            // Append: stream existing elements through, then the new one.
+            pg_sys::pushJsonbValue(
+                state,
+                pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                std::ptr::null_mut(),
+            );
+            let mut ait = pg_sys::JsonbIteratorInit(array);
+            let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+            loop {
+                let tok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                    break;
                 }
-                let mut ne = *new_elem;
-                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ne);
-                pg_sys::pushJsonbValue(
-                    state,
-                    pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
-                    std::ptr::null_mut(),
-                );
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ev);
             }
+            let mut ne = *new_elem;
+            pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ne);
+            pg_sys::pushJsonbValue(
+                state,
+                pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                std::ptr::null_mut(),
+            );
         }
     }
 }
@@ -1622,6 +1614,10 @@ unsafe fn array_container(v: &pg_sys::JsonbValue) -> *mut pg_sys::JsonbContainer
 ///
 /// `segs` must be non-empty; `node`, `value`, and every container reached
 /// through them must outlive the call.
+// Reason: a single recursive spine-rebuild whose Key/Index cases must stay in
+// one place to be reviewable against the JsonbValue stream; splitting it would
+// scatter the unsafe pointer handling for no correctness gain.
+#[allow(clippy::too_many_lines)]
 unsafe fn push_value_for_level(
     node: Option<&pg_sys::JsonbValue>,
     segs: &[crate::path::PathSegment],
@@ -1935,6 +1931,9 @@ unsafe fn push_updated_element(
 /// and the trailing-index no-op included.
 // Reason: `#[pg_extern]` requires owned arguments, as above.
 #[allow(clippy::needless_pass_by_value)]
+// Reason: the navigate-read then set-path-with-leaf flow, plus the trailing-Index
+// quirk handling, reads as one procedure; extracting fragments would obscure it.
+#[allow(clippy::too_many_lines)]
 #[pg_extern(immutable, parallel_safe, strict)]
 fn jsonb_delta_array_update_where_path(
     target: RawJsonb,
@@ -2197,11 +2196,14 @@ fn jsonb_array_update_multi_row(
 // ---------------------------------------------------------------------------
 
 /// Convert a jsonb value to a `serde_json::Value` exactly as pgrx's `JsonB`
-/// (jsonb_out then `serde_json::from_str`) would, but without the text form.
+/// (`jsonb_out` then `serde_json::from_str`) would, but without the text form.
 ///
 /// # Safety
 ///
 /// `v`'s payload and everything reached through it must outlive the call.
+// Reason: the `jbvNull` arm is enumerated explicitly so the JsonbValue type
+// dispatch reads exhaustively, even though the `_` fallback handles it identically.
+#[allow(clippy::match_same_arms)]
 unsafe fn value_from_jbv(v: &pg_sys::JsonbValue, depth: usize) -> serde_json::Value {
     use serde_json::Value;
     unsafe {
@@ -2272,14 +2274,17 @@ unsafe fn value_from_jbv(v: &pg_sys::JsonbValue, depth: usize) -> serde_json::Va
     }
 }
 
-/// A scalar `serde_json::Value` as a `JsonbValue`, matching what jsonb_in builds
+/// A scalar `serde_json::Value` as a `JsonbValue`, matching what `jsonb_in` builds
 /// from that value's canonical text. Numbers go through `numeric_in` (via
-/// `AnyNumeric`) on their serde text, so the result is exactly jsonb_in's numeric.
+/// `AnyNumeric`) on their serde text, so the result is exactly `jsonb_in`'s numeric.
 ///
 /// # Safety
 ///
 /// The returned value borrows `v`'s string bytes / a freshly palloc'd numeric,
 /// both of which must outlive the `JsonbValueToJsonb` that consumes it.
+// Reason: the `Value::Null` arm is enumerated explicitly so the serde-value
+// dispatch reads exhaustively, even though the `_` fallback handles it identically.
+#[allow(clippy::match_same_arms)]
 unsafe fn scalar_to_jbv(v: &serde_json::Value) -> pg_sys::JsonbValue {
     use serde_json::Value;
     unsafe {
@@ -2299,7 +2304,7 @@ unsafe fn scalar_to_jbv(v: &serde_json::Value) -> pg_sys::JsonbValue {
                 jbv.type_ = pg_sys::jbvType::jbvNumeric;
                 let numeric = pgrx::AnyNumeric::try_from(n.to_string().as_str())
                     .ok()
-                    .and_then(|a| a.into_datum())
+                    .and_then(pgrx::IntoDatum::into_datum)
                     .expect("a serde number is valid numeric text");
                 jbv.val.numeric = numeric.cast_mut_ptr();
             }
@@ -3000,20 +3005,20 @@ mod tests {
                 r#"{"a":{"b":{"c":9,"e":3}}}"#,
             ),
             // empty operands
-            (r#"{}"#, r#"{"a":1}"#),
-            (r#"{"a":1}"#, r#"{}"#),
-            (r#"{}"#, r#"{}"#),
+            (r"{}", r#"{"a":1}"#),
+            (r#"{"a":1}"#, r"{}"),
+            (r"{}", r"{}"),
             // non-ascii keys, with a recursion on one of them
             (
                 r#"{"café":1,"日本":{"x":1}}"#,
                 r#"{"café":2,"日本":{"y":2}}"#,
             ),
             // neither, or one, operand is an object: source wins wholesale
-            (r#"5"#, r#"{"a":1}"#),
-            (r#"[1,2]"#, r#"{"a":1}"#),
-            (r#"{"a":1}"#, r#"5"#),
-            (r#"{"a":1}"#, r#"[1,2]"#),
-            (r#"5"#, r#"7"#),
+            (r"5", r#"{"a":1}"#),
+            (r"[1,2]", r#"{"a":1}"#),
+            (r#"{"a":1}"#, r"5"),
+            (r#"{"a":1}"#, r"[1,2]"),
+            (r"5", r"7"),
         ];
         for (t, s) in cases {
             assert_matches_serde(
@@ -3077,10 +3082,10 @@ mod tests {
             ),
             (r#"{"p":[]}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
             // create the array when the key is absent
-            (r#"{}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
+            (r"{}", "p", r#"{"id":1}"#, "NULL", "NULL"),
             (r#"{"a":1,"b":[9]}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
             // append a scalar element
-            (r#"{"p":[1,2]}"#, "p", r#"3"#, "NULL", "NULL"),
+            (r#"{"p":[1,2]}"#, "p", r"3", "NULL", "NULL"),
             // ordered insert by integer id: between, front, back, equal
             (
                 r#"{"p":[{"id":1},{"id":3},{"id":5}]}"#,
@@ -3171,8 +3176,8 @@ mod tests {
     #[pg_test]
     fn array_insert_errors_match_serde() {
         let cases = [
-            (r#"[1,2]"#, "p", r#"{"id":1}"#),
-            (r#"5"#, "p", r#"{"id":1}"#),
+            (r"[1,2]", "p", r#"{"id":1}"#),
+            (r"5", "p", r#"{"id":1}"#),
             (r#""s""#, "p", r#"{"id":1}"#),
             (r#"{"p":5}"#, "p", r#"{"id":1}"#),
             (r#"{"p":{"x":1}}"#, "p", r#"{"id":1}"#),
@@ -3197,42 +3202,42 @@ mod tests {
         let cases = [
             // create / nested create
             (r#"{"user":{}}"#, "user.name", r#""Alice""#),
-            (r#"{}"#, "user.profile.settings.theme", r#""dark""#),
-            (r#"{"a":1}"#, "b", r#"2"#),
+            (r"{}", "user.profile.settings.theme", r#""dark""#),
+            (r#"{"a":1}"#, "b", r"2"),
             // overwrite an existing value wholesale
-            (r#"{"a":{"b":1}}"#, "a", r#"9"#),
-            (r#"{"a":{"b":1}}"#, "a.b", r#"99"#),
+            (r#"{"a":{"b":1}}"#, "a", r"9"),
+            (r#"{"a":{"b":1}}"#, "a.b", r"99"),
             // sibling preservation
-            (r#"{"a":1,"b":{"x":1,"y":2}}"#, "b.x", r#"99"#),
+            (r#"{"a":1,"b":{"x":1,"y":2}}"#, "b.x", r"99"),
             // destructive type replacement along the path
-            (r#"{"a":5}"#, "a.b", r#"9"#),
-            (r#"{"a":[1,2]}"#, "a.b", r#"9"#),
-            (r#"{"a":{"x":1}}"#, "a[0]", r#"9"#),
+            (r#"{"a":5}"#, "a.b", r"9"),
+            (r#"{"a":[1,2]}"#, "a.b", r"9"),
+            (r#"{"a":{"x":1}}"#, "a[0]", r"9"),
             // array index: create, pad with nulls, preserve trailing
             (r#"{"items":[]}"#, "items[0]", r#""first""#),
-            (r#"{"items":[]}"#, "items[3]", r#"9"#),
-            (r#"{"a":[10,20,30]}"#, "a[1]", r#"99"#),
-            (r#"{"a":[1,2,3,4,5]}"#, "a[2]", r#"99"#),
+            (r#"{"items":[]}"#, "items[3]", r"9"),
+            (r#"{"a":[10,20,30]}"#, "a[1]", r"99"),
+            (r#"{"a":[1,2,3,4,5]}"#, "a[2]", r"99"),
             // mixed key/index, with creation of the whole chain
-            (r#"{"orders":[{}]}"#, "orders[0].id", r#"5"#),
-            (r#"{}"#, "a[0].b[1].c", r#"7"#),
+            (r#"{"orders":[{}]}"#, "orders[0].id", r"5"),
+            (r"{}", "a[0].b[1].c", r"7"),
             // container-typed values
-            (r#"{}"#, "a", r#"{"x":1}"#),
-            (r#"{}"#, "a", r#"[1,2,3]"#),
+            (r"{}", "a", r#"{"x":1}"#),
+            (r"{}", "a", r"[1,2,3]"),
             // root itself is not the container the first segment needs
-            (r#"5"#, "a", r#"9"#),
-            (r#"[1,2]"#, "a", r#"9"#),
-            (r#"5"#, "[0]", r#"9"#),
-            (r#"{"a":1}"#, "[0]", r#"9"#),
+            (r"5", "a", r"9"),
+            (r"[1,2]", "a", r"9"),
+            (r"5", "[0]", r"9"),
+            (r#"{"a":1}"#, "[0]", r"9"),
             // non-ascii key
-            (r#"{"café":{}}"#, "café.日本", r#"1"#),
+            (r#"{"café":{}}"#, "café.日本", r"1"),
             // parse errors
-            (r#"{}"#, "a..b", r#"1"#),
-            (r#"{}"#, "a[]", r#"1"#),
-            (r#"{}"#, "a]", r#"1"#),
-            (r#"{}"#, "", r#"1"#),
+            (r"{}", "a..b", r"1"),
+            (r"{}", "a[]", r"1"),
+            (r"{}", "a]", r"1"),
+            (r"{}", "", r"1"),
             // index over the size limit
-            (r#"{}"#, "arr[200000]", r#"1"#),
+            (r"{}", "arr[200000]", r"1"),
         ];
         for (t, path, v) in cases {
             assert_same_outcome(
@@ -3243,7 +3248,7 @@ mod tests {
     }
 
     /// Value depth is enforced at the documented 1000-level cap, the same
-    /// deliberate divergence as deep merge (the serde original trips serde_json's
+    /// deliberate divergence as deep merge (the serde original trips `serde_json`'s
     /// ~128 parse limit long before its own guard). Asserted directly.
     #[pg_test]
     fn set_path_enforces_documented_depth_limit() {
@@ -3259,6 +3264,9 @@ mod tests {
     /// Nested field update inside the first matched array element: the common
     /// key-terminated paths, plus the trailing-index no-op quirk, first-match,
     /// intermediate creation, destructive type replacement, and no-match.
+    // Reason: a table-driven differential test; its length is the case table, not
+    // branching complexity, and it reads better as one list than split apart.
+    #[allow(clippy::too_many_lines)]
     #[pg_test]
     fn array_update_where_path_matches_serde() {
         // (target, array_key, match_key, match_value, update_path, update_value)
@@ -3279,14 +3287,7 @@ mod tests {
                 "profile.name",
                 r#""X""#,
             ),
-            (
-                r#"{"users":[{"id":1}]}"#,
-                "users",
-                "id",
-                "1",
-                "a.b.c",
-                r#"9"#,
-            ),
+            (r#"{"users":[{"id":1}]}"#, "users", "id", "1", "a.b.c", r"9"),
             // destructive type replacement along the path
             (
                 r#"{"users":[{"id":1,"profile":5}]}"#,
@@ -3338,7 +3339,7 @@ mod tests {
                 "id",
                 "1",
                 "meta",
-                r#"[1,2,3]"#,
+                r"[1,2,3]",
             ),
             // text match key
             (
@@ -3347,7 +3348,7 @@ mod tests {
                 "id",
                 r#""b""#,
                 "x",
-                r#"9"#,
+                r"9",
             ),
             // trailing-index no-op: lone index, and a nested index over absent /
             // existing-object / existing-array leaves
@@ -3390,7 +3391,7 @@ mod tests {
                 "id",
                 "1",
                 "café.日本",
-                r#"1"#,
+                r"1",
             ),
             (
                 r#"{"n":9,"users":[{"id":1}],"m":[1,2]}"#,
@@ -3398,7 +3399,7 @@ mod tests {
                 "id",
                 "1",
                 "x",
-                r#"7"#,
+                r"7",
             ),
         ];
         for (t, ak, mk, mv, up, uv) in cases {
@@ -3419,28 +3420,21 @@ mod tests {
     #[pg_test]
     fn array_update_where_path_errors_match_serde() {
         let cases = [
-            (r#"{"users":[{"id":1}]}"#, "users", "", "1", "x", r#"1"#),
-            (
-                r#"{"users":[{"id":1}]}"#,
-                "users",
-                "id",
-                "1",
-                "a..b",
-                r#"1"#,
-            ),
-            (r#"{"users":[{"id":1}]}"#, "users", "id", "1", "", r#"1"#),
-            (r#"{"x":1}"#, "users", "id", "1", "a", r#"1"#),
-            (r#"{"users":5}"#, "users", "id", "1", "a", r#"1"#),
-            (r#"{"users":{"x":1}}"#, "users", "id", "1", "a", r#"1"#),
-            (r#"[1,2]"#, "users", "id", "1", "a", r#"1"#),
-            (r#"5"#, "users", "id", "1", "a", r#"1"#),
+            (r#"{"users":[{"id":1}]}"#, "users", "", "1", "x", r"1"),
+            (r#"{"users":[{"id":1}]}"#, "users", "id", "1", "a..b", r"1"),
+            (r#"{"users":[{"id":1}]}"#, "users", "id", "1", "", r"1"),
+            (r#"{"x":1}"#, "users", "id", "1", "a", r"1"),
+            (r#"{"users":5}"#, "users", "id", "1", "a", r"1"),
+            (r#"{"users":{"x":1}}"#, "users", "id", "1", "a", r"1"),
+            (r"[1,2]", "users", "id", "1", "a", r"1"),
+            (r"5", "users", "id", "1", "a", r"1"),
             (
                 r#"{"users":[{"id":1}]}"#,
                 "users",
                 "id",
                 "1",
                 "a[200000].x",
-                r#"1"#,
+                r"1",
             ),
         ];
         for (t, ak, mk, mv, up, uv) in cases {
@@ -3516,7 +3510,7 @@ mod tests {
                 r#"{"x":9}"#,
             ),
             // empty input
-            (r#"ARRAY[]::jsonb[]"#, "p", "id", "1", r#"{"x":9}"#),
+            (r"ARRAY[]::jsonb[]", "p", "id", "1", r#"{"x":9}"#),
             // text match key
             (
                 r#"ARRAY['{"p":[{"id":"a"},{"id":"b"}]}']::jsonb[]"#,
@@ -3545,7 +3539,7 @@ mod tests {
                 "p",
                 "id",
                 "1",
-                r#"5"#,
+                r"5",
             ),
             (
                 r#"ARRAY['{"p":[{"id":1}]}']::jsonb[]"#,
@@ -3572,10 +3566,10 @@ mod tests {
     }
 
     /// The coalesced changeset, every op type against the serde original: set /
-    /// remove / merge / deep_merge / increment / array_{update,update_all,replace,
+    /// remove / merge / `deep_merge` / increment / array_{`update,update_all,replace`,
     /// upsert,delete,insert}, both path forms, multi-op sequences, text keys, and
-    /// -- critically -- number scale, which must be lost identically (serde_json
-    /// has no arbitrary_precision, so 1.50 becomes 1.5 in both).
+    /// -- critically -- number scale, which must be lost identically (`serde_json`
+    /// has no `arbitrary_precision`, so 1.50 becomes 1.5 in both).
     #[pg_test]
     fn apply_changeset_matches_serde() {
         // (doc, ops)
@@ -3604,7 +3598,7 @@ mod tests {
             // increment: integer, float, and an absent counter (starts at 0)
             (r#"{"n":5}"#, r#"[{"op":"increment","path":"n","by":3}]"#),
             (r#"{"n":5}"#, r#"[{"op":"increment","path":"n","by":2.5}]"#),
-            (r#"{}"#, r#"[{"op":"increment","path":"c","by":1}]"#),
+            (r"{}", r#"[{"op":"increment","path":"c","by":1}]"#),
             // array ops
             (
                 r#"{"p":[{"id":1,"n":"a"},{"id":2,"n":"b"},{"id":1,"n":"c"}]}"#,
@@ -3644,7 +3638,7 @@ mod tests {
                 r#"[{"op":"increment","path":"stats.count","by":1},{"op":"array_insert","path":"posts","value":{"id":2}},{"op":"set","path":"updated","value":true}]"#,
             ),
             // number scale is lost identically (the correctness risk of this port)
-            (r#"{"price":1.50,"qty":2}"#, r#"[]"#),
+            (r#"{"price":1.50,"qty":2}"#, r"[]"),
             (
                 r#"{"price":1.50}"#,
                 r#"[{"op":"set","path":"x","value":1}]"#,
@@ -3659,7 +3653,7 @@ mod tests {
                 r#"[{"op":"array_update","path":"p","match_key":"id","match_value":"b","value":{"x":9}}]"#,
             ),
             // a non-object document, replaced wholesale by a root set
-            (r#"5"#, r#"[{"op":"set","path":"","value":{"a":1}}]"#),
+            (r"5", r#"[{"op":"set","path":"","value":{"a":1}}]"#),
         ];
         for (doc, ops) in cases {
             assert_same_outcome(
@@ -3678,8 +3672,8 @@ mod tests {
             (r#"{"a":1}"#, r#"[{"op":"nonsense","path":"a"}]"#),
             (r#"{"a":1}"#, r#"[{"path":"a"}]"#),
             (r#"{"a":1}"#, r#"[{"op":"set","path":"a"}]"#),
-            (r#"{"a":1}"#, r#"[5]"#),
-            (r#"{"a":1}"#, r#"{}"#),
+            (r#"{"a":1}"#, r"[5]"),
+            (r#"{"a":1}"#, r"{}"),
             (r#"{"a":1}"#, r#"[{"op":"increment","path":"a","by":"x"}]"#),
             (
                 r#"{"a":{"x":1}}"#,

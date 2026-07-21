@@ -29,7 +29,7 @@ use crate::{validate_depth, value_type_name, MAX_JSONB_DEPTH};
 
 /// Maximum number of operations accepted in a single changeset (`DoS` guard: bounds the
 /// total work of one call, since the ops array is otherwise attacker-controlled).
-pub(crate) const MAX_CHANGESET_OPS: usize = 10_000;
+pub const MAX_CHANGESET_OPS: usize = 10_000;
 
 /// Maximum number of path segments in a single op path.
 ///
