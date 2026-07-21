@@ -1779,6 +1779,296 @@ fn jsonb_delta_set_path(target: RawJsonb, path: &str, value: RawJsonb) -> RawJso
 }
 
 // ---------------------------------------------------------------------------
+// Nested field update inside a matched array element
+//
+// Find the first element of a top-level array matching a key, then set a nested
+// field inside it. The nested set reuses push_value_for_level, except for the
+// serde quirk that the final value is set only when the last path segment is a
+// key: a trailing array index is a silent no-op that still creates the parent
+// intermediates. Non-matching elements and off-array keys pass through as binary.
+// ---------------------------------------------------------------------------
+
+/// Read the value at `segs` under `start`, or `None` if any step is missing or
+/// type-mismatched -- exactly `crate::path::navigate_path`'s reading semantics.
+///
+/// # Safety
+///
+/// `start`'s payload and everything reached through it must outlive the call.
+unsafe fn navigate_read(
+    start: &pg_sys::JsonbValue,
+    segs: &[crate::path::PathSegment],
+) -> Option<pg_sys::JsonbValue> {
+    use crate::path::PathSegment;
+    unsafe {
+        let mut current = *start;
+        for seg in segs {
+            if current.type_ != pg_sys::jbvType::jbvBinary {
+                return None;
+            }
+            let container = current.val.binary.data;
+            match seg {
+                PathSegment::Key(k) => {
+                    if (*container).header & pg_sys::JB_FOBJECT == 0 {
+                        return None;
+                    }
+                    let mut kk = key_value(k);
+                    let found = pg_sys::findJsonbValueFromContainer(
+                        container,
+                        pg_sys::JB_FOBJECT,
+                        &raw mut kk,
+                    );
+                    if found.is_null() {
+                        return None;
+                    }
+                    current = *found;
+                }
+                PathSegment::Index(i) => {
+                    if (*container).header & pg_sys::JB_FARRAY == 0 {
+                        return None;
+                    }
+                    let idx = u32::try_from(*i).unwrap_or(u32::MAX);
+                    let found = pg_sys::getIthJsonbValueFromContainer(container, idx);
+                    if found.is_null() {
+                        return None;
+                    }
+                    current = *found;
+                }
+            }
+        }
+        Some(current)
+    }
+}
+
+/// A `JsonbValue` for an empty object `{}`, the intermediate serde's parent
+/// navigation synthesizes for an absent object key (`or_insert(Object)`).
+///
+/// # Safety
+///
+/// Uses the palloc'ing builder in the current memory context.
+unsafe fn empty_object_value() -> pg_sys::JsonbValue {
+    unsafe {
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+        let r = pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        );
+        let j = pg_sys::JsonbValueToJsonb(r);
+        let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbToJsonbValue(j, &raw mut v);
+        v
+    }
+}
+
+/// Push the matched `element` with `value` set at `segments`, as one array
+/// element. Reproduces the serde rule that a path ending in an array index sets
+/// nothing (a no-op that still creates the parent intermediates).
+///
+/// # Safety
+///
+/// `segments` is non-empty; all pointers must outlive the call.
+unsafe fn push_updated_element(
+    element: &pg_sys::JsonbValue,
+    segments: &[crate::path::PathSegment],
+    value: &pg_sys::JsonbValue,
+    state: *mut *mut pg_sys::JsonbParseState,
+) {
+    use crate::path::PathSegment;
+    unsafe {
+        match segments.last().expect("segments is non-empty") {
+            // The common case: a field name. Identical to set_path.
+            PathSegment::Key(_) => {
+                push_value_for_level(Some(element), segments, value, state);
+            }
+            PathSegment::Index(_) => {
+                if segments.len() == 1 {
+                    // A lone trailing index sets nothing: the element is untouched.
+                    let mut e = *element;
+                    pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut e);
+                } else {
+                    // Navigate/create the parent path but leave its leaf as the
+                    // navigation found or synthesized it -- serde skips the final
+                    // index set. set_path over the parent with the leaf's own
+                    // value reproduces exactly this (it overwrites the leaf with
+                    // itself, or with the type-appropriate default when absent).
+                    let parent = &segments[..segments.len() - 1];
+                    let leaf = navigate_read(element, parent).unwrap_or_else(|| {
+                        match parent.last().expect("parent is non-empty") {
+                            PathSegment::Key(_) => empty_object_value(),
+                            PathSegment::Index(_) => {
+                                let mut n = std::mem::zeroed::<pg_sys::JsonbValue>();
+                                n.type_ = pg_sys::jbvType::jbvNull;
+                                n
+                            }
+                        }
+                    });
+                    push_value_for_level(Some(element), parent, &leaf, state);
+                }
+            }
+        }
+    }
+}
+
+/// Set a nested field in the first matching element of a top-level array, without
+/// materializing the document.
+///
+/// Behaviourally identical to `jsonb_delta_array_update_where_path`, error text
+/// and the trailing-index no-op included.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_delta_array_update_where_path(
+    target: RawJsonb,
+    array_key: &str,
+    match_key: &str,
+    match_value: RawJsonb,
+    update_path: &str,
+    update_value: RawJsonb,
+) -> RawJsonb {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    let segments = crate::path::parse_path(update_path)
+        .unwrap_or_else(|e| error!("Invalid update path '{}': {}", update_path, e));
+    if segments.len() > crate::MAX_JSONB_DEPTH {
+        error!(
+            "Invalid update path '{}': path has {} segments, exceeds maximum {}",
+            update_path,
+            segments.len(),
+            crate::MAX_JSONB_DEPTH
+        );
+    }
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        // The array must be present at the top-level key and be an array. A
+        // non-object target reads as "does not exist", matching `get_mut`.
+        let arr_val = if is_object(&target) {
+            let mut k = key_value(array_key);
+            let f = pg_sys::findJsonbValueFromContainer(
+                target.container(),
+                pg_sys::JB_FOBJECT,
+                &raw mut k,
+            );
+            if f.is_null() {
+                None
+            } else {
+                Some(*f)
+            }
+        } else {
+            None
+        };
+        match arr_val {
+            None => error!("Array path '{}' does not exist in document", array_key),
+            Some(v) if array_container(&v).is_null() => error!(
+                "Path '{}' does not point to an array, found: {}",
+                array_key,
+                jsonb_type_name(&v)
+            ),
+            Some(_) => {}
+        }
+
+        // Depth is validated before any match is sought, exactly as serde does.
+        let uroot = root_as_value(&update_value);
+        if !depth_within(&uroot, 0, crate::MAX_JSONB_DEPTH) {
+            error!(
+                "JSONB nesting too deep (max {}, found depth {})",
+                crate::MAX_JSONB_DEPTH,
+                crate::MAX_JSONB_DEPTH + 1
+            );
+        }
+        let mv = root_as_value(&match_value);
+
+        // Rebuild the document, transforming the first matching element only.
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+        let mut it = pg_sys::JsonbIteratorInit(target.container());
+        let mut key = std::mem::zeroed::<pg_sys::JsonbValue>();
+        let mut val = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+        let mut done = false;
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            let is_target = key.type_ == pg_sys::jbvType::jbvString
+                && usize::try_from(key.val.string.len).unwrap_or(0) == array_key.len()
+                && std::slice::from_raw_parts(key.val.string.val.cast::<u8>(), array_key.len())
+                    == array_key.as_bytes();
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut val, true);
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_KEY,
+                &raw mut key,
+            );
+
+            if !is_target {
+                pg_sys::pushJsonbValue(
+                    &raw mut state,
+                    pg_sys::JsonbIteratorToken::WJB_VALUE,
+                    &raw mut val,
+                );
+                continue;
+            }
+
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                std::ptr::null_mut(),
+            );
+            let mut ait = pg_sys::JsonbIteratorInit(val.val.binary.data);
+            let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+            pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+            loop {
+                let etok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                if etok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                    break;
+                }
+                if !done && element_matches(&ev, match_key, &mv) {
+                    done = true;
+                    // Parent index segments are bounds-checked, only on a match,
+                    // exactly as serde validates them while navigating.
+                    for seg in &segments[..segments.len() - 1] {
+                        if let crate::path::PathSegment::Index(idx) = seg {
+                            crate::depth::validate_array_index(
+                                *idx,
+                                crate::depth::MAX_JSONB_ARRAY_SIZE,
+                            )
+                            .unwrap_or_else(|e| error!("{}", e));
+                        }
+                    }
+                    push_updated_element(&ev, &segments, &uroot, &raw mut state);
+                } else {
+                    pg_sys::pushJsonbValue(
+                        &raw mut state,
+                        pg_sys::JsonbIteratorToken::WJB_ELEM,
+                        &raw mut ev,
+                    );
+                }
+            }
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                std::ptr::null_mut(),
+            );
+        }
+        let result = pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        );
+        RawJsonb(pg_sys::JsonbValueToJsonb(result))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -2572,6 +2862,216 @@ mod tests {
     fn set_path_enforces_documented_depth_limit() {
         let out = outcome(
             r#"jsonb_delta_set_path('{}','a',(repeat('{"a":',1001)||'1'||repeat('}',1001))::jsonb)"#,
+        );
+        assert_eq!(
+            out,
+            "ERROR: JSONB nesting too deep (max 1000, found depth 1001)"
+        );
+    }
+
+    /// Nested field update inside the first matched array element: the common
+    /// key-terminated paths, plus the trailing-index no-op quirk, first-match,
+    /// intermediate creation, destructive type replacement, and no-match.
+    #[pg_test]
+    fn array_update_where_path_matches_serde() {
+        // (target, array_key, match_key, match_value, update_path, update_value)
+        let cases = [
+            (
+                r#"{"users":[{"id":1,"profile":{"name":"Alice","city":"NY"}}]}"#,
+                "users",
+                "id",
+                "1",
+                "profile.name",
+                r#""Bob""#,
+            ),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "profile.name",
+                r#""X""#,
+            ),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "a.b.c",
+                r#"9"#,
+            ),
+            // destructive type replacement along the path
+            (
+                r#"{"users":[{"id":1,"profile":5}]}"#,
+                "users",
+                "id",
+                "1",
+                "profile.name",
+                r#""X""#,
+            ),
+            // mixed key/index path ending in a key
+            (
+                r#"{"users":[{"id":1,"orders":[{"id":9,"s":"new"}]}]}"#,
+                "users",
+                "id",
+                "1",
+                "orders[0].s",
+                r#""shipped""#,
+            ),
+            // no match -> document unchanged
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "99",
+                "profile.name",
+                r#""X""#,
+            ),
+            // only the first of two matches is updated
+            (
+                r#"{"users":[{"id":1,"n":"a"},{"id":1,"n":"b"}]}"#,
+                "users",
+                "id",
+                "1",
+                "n",
+                r#""Z""#,
+            ),
+            // container-typed update values
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "meta",
+                r#"{"x":1}"#,
+            ),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "meta",
+                r#"[1,2,3]"#,
+            ),
+            // text match key
+            (
+                r#"{"users":[{"id":"a","x":1},{"id":"b","x":2}]}"#,
+                "users",
+                "id",
+                r#""b""#,
+                "x",
+                r#"9"#,
+            ),
+            // trailing-index no-op: lone index, and a nested index over absent /
+            // existing-object / existing-array leaves
+            (
+                r#"{"users":[{"id":1,"n":"a"}]}"#,
+                "users",
+                "id",
+                "1",
+                "[0]",
+                r#""ignored""#,
+            ),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "a[0]",
+                r#""ignored""#,
+            ),
+            (
+                r#"{"users":[{"id":1,"a":{"z":1}}]}"#,
+                "users",
+                "id",
+                "1",
+                "a[0]",
+                r#""ignored""#,
+            ),
+            (
+                r#"{"users":[{"id":1,"a":[10,20]}]}"#,
+                "users",
+                "id",
+                "1",
+                "a[3]",
+                r#""ignored""#,
+            ),
+            // non-ascii, and preservation of sibling document keys
+            (
+                r#"{"u":[{"id":1,"café":{}}]}"#,
+                "u",
+                "id",
+                "1",
+                "café.日本",
+                r#"1"#,
+            ),
+            (
+                r#"{"n":9,"users":[{"id":1}],"m":[1,2]}"#,
+                "users",
+                "id",
+                "1",
+                "x",
+                r#"7"#,
+            ),
+        ];
+        for (t, ak, mk, mv, up, uv) in cases {
+            assert_same_outcome(
+                &format!(
+                    "jsonb_delta_array_update_where_path('{t}','{ak}','{mk}','{mv}','{up}','{uv}')"
+                ),
+                &format!(
+                    "jsonb_delta_array_update_where_path_reference('{t}','{ak}','{mk}','{mv}','{up}','{uv}')"
+                ),
+            );
+        }
+    }
+
+    /// Every failure mode: empty match key, bad update path, missing / non-array
+    /// target key, non-object target, and an over-limit parent index (validated
+    /// only on a match, exactly as serde does).
+    #[pg_test]
+    fn array_update_where_path_errors_match_serde() {
+        let cases = [
+            (r#"{"users":[{"id":1}]}"#, "users", "", "1", "x", r#"1"#),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "a..b",
+                r#"1"#,
+            ),
+            (r#"{"users":[{"id":1}]}"#, "users", "id", "1", "", r#"1"#),
+            (r#"{"x":1}"#, "users", "id", "1", "a", r#"1"#),
+            (r#"{"users":5}"#, "users", "id", "1", "a", r#"1"#),
+            (r#"{"users":{"x":1}}"#, "users", "id", "1", "a", r#"1"#),
+            (r#"[1,2]"#, "users", "id", "1", "a", r#"1"#),
+            (r#"5"#, "users", "id", "1", "a", r#"1"#),
+            (
+                r#"{"users":[{"id":1}]}"#,
+                "users",
+                "id",
+                "1",
+                "a[200000].x",
+                r#"1"#,
+            ),
+        ];
+        for (t, ak, mk, mv, up, uv) in cases {
+            assert_same_outcome(
+                &format!(
+                    "jsonb_delta_array_update_where_path('{t}','{ak}','{mk}','{mv}','{up}','{uv}')"
+                ),
+                &format!(
+                    "jsonb_delta_array_update_where_path_reference('{t}','{ak}','{mk}','{mv}','{up}','{uv}')"
+                ),
+            );
+        }
+    }
+
+    #[pg_test]
+    fn array_update_where_path_enforces_depth_limit() {
+        let out = outcome(
+            r#"jsonb_delta_array_update_where_path('{"u":[{"id":1}]}','u','id','1','x',(repeat('{"a":',1001)||'1'||repeat('}',1001))::jsonb)"#,
         );
         assert_eq!(
             out,

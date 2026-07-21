@@ -6,11 +6,17 @@
 // Copyright (c) 2025, Lionel Hamayon
 // Licensed under the PostgreSQL License
 
+// These are used only by the serde reference functions retained below as
+// differential-test oracles, so they exist only in test / pg_test builds.
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::prelude::*;
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::JsonB;
 use serde_json::Value;
 
+#[cfg(any(test, feature = "pg_test"))]
 use crate::array_ops::validate_match_key;
+#[cfg(any(test, feature = "pg_test"))]
 use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
 
 // Tell pgrx which PostgreSQL versions we support
@@ -275,8 +281,20 @@ pub(crate) fn find_element_by_match(
 /// );
 /// -- Result: {"users": [{"id": 1, "profile": {"name": "Bob"}}]}
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_delta_array_update_where_path(
+// Retained only as the differential-test oracle for the binary implementation
+// that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
+#[allow(clippy::needless_pass_by_value)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_delta_array_update_where_path_reference"
+    )
+)]
+fn jsonb_delta_array_update_where_path_reference(
     target: JsonB,
     array_key: &str,
     match_key: &str,
