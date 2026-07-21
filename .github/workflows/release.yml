@@ -60,35 +60,30 @@ jobs:
           name: jsonb_delta-pg${{ matrix.pg-version }}
           path: target/release/jsonb_delta-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz
 
-  generate-changelog:
-    name: Generate Changelog
-    runs-on: ubuntu-latest
-    outputs:
-      changelog: ${{ steps.git-cliff.outputs.content }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Generate changelog
-        id: git-cliff
-        uses: orhun/git-cliff-action@v2
-        with:
-          config: cliff.toml
-          args: --latest --strip header
-        env:
-          OUTPUT: changelog.md
-
   create-release:
     name: Create GitHub Release
-    needs: [build-release, generate-changelog]
+    needs: [build-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 ~ ("^## \\[" ver "\\]") { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG.md section for $version; using a generic body." >&2
+            printf 'Release %s.\n\nSee CHANGELOG.md for details.\n' "$GITHUB_REF_NAME" > release-notes.md
+          fi
+          echo '----- release notes -----'
+          cat release-notes.md
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -99,7 +94,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: release-artifacts/*/*.tar.gz
-          body_path: changelog.md
+          body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
         env:
