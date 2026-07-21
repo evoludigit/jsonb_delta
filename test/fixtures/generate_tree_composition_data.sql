@@ -10,7 +10,10 @@ BEGIN
     DROP TABLE IF EXISTS bench_tree_addresses CASCADE;
     DROP TABLE IF EXISTS bench_tree_billing CASCADE;
     DROP TABLE IF EXISTS bench_tree_preferences CASCADE;
-    DROP MATERIALIZED VIEW IF EXISTS v_tree_user_profile CASCADE;
+    -- v_tree_user_profile is a regular table (see below), so DROP TABLE, not
+    -- DROP MATERIALIZED VIEW — the latter errors when the object already exists
+    -- as a table and would break re-running this idempotent generator.
+    DROP TABLE IF EXISTS v_tree_user_profile CASCADE;
 
     -- Base table: Users (1000 records)
     CREATE TABLE bench_tree_users (
