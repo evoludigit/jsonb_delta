@@ -1,6 +1,6 @@
 -- Simple performance benchmarks for jsonb_merge_shallow()
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 \timing on
 

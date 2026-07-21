@@ -4,11 +4,15 @@
 CREATE OR REPLACE FUNCTION generate_cqrs_test_data()
 RETURNS void AS $$
 BEGIN
-    -- Drop existing test tables
+    -- Drop existing test tables (every object created below, so the generator
+    -- is safe to re-run — CREATE TABLE has no IF NOT EXISTS to fall back on).
     DROP TABLE IF EXISTS bench_dns_servers CASCADE;
     DROP TABLE IF EXISTS bench_network_configs CASCADE;
     DROP TABLE IF EXISTS bench_allocations CASCADE;
     DROP TABLE IF EXISTS bench_nc_dns_mapping CASCADE;
+    DROP TABLE IF EXISTS v_dns_server CASCADE;
+    DROP TABLE IF EXISTS tv_network_configuration CASCADE;
+    DROP TABLE IF EXISTS tv_allocation CASCADE;
 
     -- Base table: DNS servers (500 records)
     CREATE TABLE bench_dns_servers (

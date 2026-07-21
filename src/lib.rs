@@ -6,11 +6,17 @@
 // Copyright (c) 2025, Lionel Hamayon
 // Licensed under the PostgreSQL License
 
+// These are used only by the serde reference functions retained below as
+// differential-test oracles, so they exist only in test / pg_test builds.
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::prelude::*;
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::JsonB;
 use serde_json::Value;
 
+#[cfg(any(test, feature = "pg_test"))]
 use crate::array_ops::validate_match_key;
+#[cfg(any(test, feature = "pg_test"))]
 use crate::depth::{validate_array_index, MAX_JSONB_ARRAY_SIZE};
 
 // Tell pgrx which PostgreSQL versions we support
@@ -30,12 +36,34 @@ pub mod pg_test {
     }
 }
 
+/// The exact `serde_json` this crate was built against.
+///
+/// `path::navigate_path` and friends take and return `serde_json::Value`, so a
+/// caller that constructs values with its *own* `serde_json` gets a type error
+/// whenever Cargo resolves two copies -- the error reads
+/// "expected `serde_json::value::Value`, found `Value`", which is memorable for
+/// the wrong reasons.
+///
+/// That is not hypothetical here. Under `--features pg_test`, `pgrx-tests`
+/// straddles the normal and build-dependency graphs, which resolver v2 keeps
+/// separately feature-resolved, so two `serde_json` compilations of the *same
+/// version* end up in scope and the doctests below stop compiling. Going through
+/// this re-export pins the identity and the problem disappears.
+pub use serde_json;
+
 // Module declarations
 mod array_ops;
+mod binary;
+mod changeset;
 mod depth;
 mod merge;
 pub mod path; // Public for doc tests
 mod search;
+
+// Exported-signature contract test (issue #12). Test-only: it introspects
+// pg_proc under the pgrx test harness, so it is gated like the other pg_test code.
+#[cfg(any(test, feature = "pg_test"))]
+mod contract;
 
 // Property-based testing infrastructure
 #[cfg(test)]
@@ -43,6 +71,7 @@ mod property_tests;
 
 // Re-exports for public API (maintains backward compatibility)
 pub use array_ops::*;
+pub use changeset::*;
 pub use depth::validate_depth;
 pub use depth::MAX_JSONB_DEPTH;
 pub use merge::*;
@@ -96,9 +125,15 @@ pub use path::*;
 /// FROM tv_user
 /// WHERE jsonb_extract_id(data, 'company_id') = '123';
 /// ```
+// Retained only as the differential-test oracle for the binary
+// implementation that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe)]
-fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(immutable, parallel_safe, name = "jsonb_extract_id_reference")
+)]
+fn jsonb_extract_id_reference(data: JsonB, key: default!(&str, "'id'")) -> Option<String> {
     let obj = data.0.as_object()?;
     let id_value = obj.get(key)?;
 
@@ -173,9 +208,25 @@ fn jsonb_extract_id(data: JsonB, key: default!(&str, "'id'")) -> Option<String> 
 /// SELECT pk_feed FROM tv_feed
 /// WHERE jsonb_array_contains_id(data, 'posts', 'id', '123'::jsonb);
 /// ```
+// Retained only as the differential-test oracle for the binary
+// implementation that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_array_contains_id(data: JsonB, array_path: &str, id_key: &str, id_value: JsonB) -> bool {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_contains_id_reference"
+    )
+)]
+fn jsonb_array_contains_id_reference(
+    data: JsonB,
+    array_path: &str,
+    id_key: &str,
+    id_value: JsonB,
+) -> bool {
     validate_match_key(id_key).unwrap_or_else(|e| error!("{}", e));
 
     let Some(obj) = data.0.as_object() else {
@@ -235,8 +286,20 @@ pub(crate) fn find_element_by_match(
 /// );
 /// -- Result: {"users": [{"id": 1, "profile": {"name": "Bob"}}]}
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_delta_array_update_where_path(
+// Retained only as the differential-test oracle for the binary implementation
+// that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
+#[allow(clippy::needless_pass_by_value)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_delta_array_update_where_path_reference"
+    )
+)]
+fn jsonb_delta_array_update_where_path_reference(
     target: JsonB,
     array_key: &str,
     match_key: &str,
@@ -349,8 +412,20 @@ fn jsonb_delta_array_update_where_path(
 /// );
 /// -- Result: {"items": ["first item"]}
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_delta_set_path(target: JsonB, path: &str, value: JsonB) -> JsonB {
+// Retained only as the differential-test oracle for the binary implementation
+// that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
+#[allow(clippy::needless_pass_by_value)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_delta_set_path_reference"
+    )
+)]
+fn jsonb_delta_set_path_reference(target: JsonB, path: &str, value: JsonB) -> JsonB {
     let mut target_value: Value = target.0;
 
     // Parse the path

@@ -1,7 +1,14 @@
-/* jsonb_delta 0.1.0 -> 0.2.0 upgrade script.
-   Adds jsonb_apply_changeset (new in 0.2.0) and re-points every existing
-   C-language function at the 0.2.0 module explicitly, so the upgrade is
-   auditable rather than empty. */
+/* jsonb_delta 0.2.0 -> 0.3.0 upgrade script.
+
+   0.3.0 is the binary-JSONB rewrite: every function was reimplemented to walk
+   PostgreSQL's binary jsonb representation instead of round-tripping the
+   document through serde_json. The SQL contract is unchanged from 0.2.0 — same
+   16 functions, identical argument and return types, volatility and strictness
+   (verified byte-identical to sql/jsonb_delta--0.2.0.sql with comments stripped).
+   No signature changes, so this upgrade re-points every C-language function at
+   the 0.3.0 module explicitly, making the behaviour swap auditable rather than
+   an empty script. The performance change is in the shared object, not the
+   catalog. */
 
 /* <begin connected objects> */
 /*
@@ -12,25 +19,25 @@ The ordering of items is not stable, it is driven by a dependency graph.
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/changeset.rs:532
--- jsonb_delta::changeset::jsonb_apply_changeset
+-- src/binary.rs:2429
+-- jsonb_delta::binary::jsonb_apply_changeset
 CREATE OR REPLACE FUNCTION "jsonb_apply_changeset"(
-	"doc" jsonb, /* pgrx::datum::json::JsonB */
-	"ops" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"doc" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"ops" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_apply_changeset_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:179
--- jsonb_delta::jsonb_array_contains_id
+-- src/binary.rs:2473
+-- jsonb_delta::binary::jsonb_array_contains_id
 CREATE OR REPLACE FUNCTION "jsonb_array_contains_id"(
-	"data" jsonb, /* pgrx::datum::json::JsonB */
+	"data" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
 	"id_key" TEXT, /* &str */
-	"id_value" jsonb /* pgrx::datum::json::JsonB */
+	"id_value" jsonb /* jsonb_delta::binary::RawJsonb */
 ) RETURNS bool /* bool */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
@@ -38,45 +45,45 @@ AS 'MODULE_PATHNAME', 'jsonb_array_contains_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:344
--- jsonb_delta::array_ops::jsonb_array_delete_where
+-- src/binary.rs:537
+-- jsonb_delta::binary::jsonb_array_delete_where
 CREATE OR REPLACE FUNCTION "jsonb_array_delete_where"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"match_value" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"match_value" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_array_delete_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:436
--- jsonb_delta::array_ops::jsonb_array_insert_where
+-- src/binary.rs:1429
+-- jsonb_delta::binary::jsonb_array_insert_where
 CREATE OR REPLACE FUNCTION "jsonb_array_insert_where"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
-	"new_element" jsonb, /* pgrx::datum::json::JsonB */
+	"new_element" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"sort_key" TEXT, /* core::option::Option<&str> */
 	"sort_order" TEXT /* core::option::Option<&str> */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_array_insert_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:255
--- jsonb_delta::array_ops::jsonb_array_update_multi_row
+-- src/binary.rs:2142
+-- jsonb_delta::binary::jsonb_array_update_multi_row
 CREATE OR REPLACE FUNCTION "jsonb_array_update_multi_row"(
-	"targets" jsonb[], /* pgrx::datum::array::Array<'_, pgrx::datum::json::JsonB> */
+	"targets" jsonb[], /* pgrx::datum::array::Array<'_, jsonb_delta::binary::RawJsonb> */
 	"array_path" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"match_value" jsonb, /* pgrx::datum::json::JsonB */
-	"updates" jsonb /* pgrx::datum::json::JsonB */
+	"match_value" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"updates" jsonb /* jsonb_delta::binary::RawJsonb */
 ) RETURNS TABLE (
-	"result" jsonb  /* pgrx::datum::json::JsonB */
+	"result" jsonb  /* jsonb_delta::binary::RawJsonb */
 )
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
@@ -84,80 +91,80 @@ AS 'MODULE_PATHNAME', 'jsonb_array_update_multi_row_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:65
--- jsonb_delta::array_ops::jsonb_array_update_where
+-- src/binary.rs:499
+-- jsonb_delta::binary::jsonb_array_update_where
 CREATE OR REPLACE FUNCTION "jsonb_array_update_where"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"match_value" jsonb, /* pgrx::datum::json::JsonB */
-	"updates" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"match_value" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"updates" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_array_update_where_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/array_ops.rs:147
--- jsonb_delta::array_ops::jsonb_array_update_where_batch
+-- src/binary.rs:636
+-- jsonb_delta::binary::jsonb_array_update_where_batch
 CREATE OR REPLACE FUNCTION "jsonb_array_update_where_batch"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"updates_array" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"updates_array" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_array_update_where_batch_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:384
--- jsonb_delta::merge::jsonb_deep_merge
+-- src/binary.rs:1225
+-- jsonb_delta::binary::jsonb_deep_merge
 CREATE OR REPLACE FUNCTION "jsonb_deep_merge"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
-	"source" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_deep_merge_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:240
--- jsonb_delta::jsonb_delta_array_update_where_path
+-- src/binary.rs:1938
+-- jsonb_delta::binary::jsonb_delta_array_update_where_path
 CREATE OR REPLACE FUNCTION "jsonb_delta_array_update_where_path"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_key" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"match_value" jsonb, /* pgrx::datum::json::JsonB */
+	"match_value" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"update_path" TEXT, /* &str */
-	"update_value" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"update_value" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_delta_array_update_where_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:354
--- jsonb_delta::jsonb_delta_set_path
+-- src/binary.rs:1757
+-- jsonb_delta::binary::jsonb_delta_set_path
 CREATE OR REPLACE FUNCTION "jsonb_delta_set_path"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"path" TEXT, /* &str */
-	"value" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"value" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_delta_set_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/lib.rs:102
--- jsonb_delta::jsonb_extract_id
+-- src/binary.rs:2519
+-- jsonb_delta::binary::jsonb_extract_id
 CREATE OR REPLACE FUNCTION "jsonb_extract_id"(
-	"data" jsonb, /* pgrx::datum::json::JsonB */
+	"data" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"key" TEXT DEFAULT 'id' /* &str */
 ) RETURNS TEXT /* core::option::Option<alloc::string::String> */
 IMMUTABLE STRICT PARALLEL SAFE
@@ -166,67 +173,66 @@ AS 'MODULE_PATHNAME', 'jsonb_extract_id_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:99
--- jsonb_delta::merge::jsonb_merge_at_path
+-- src/binary.rs:1028
+-- jsonb_delta::binary::jsonb_merge_at_path
 CREATE OR REPLACE FUNCTION "jsonb_merge_at_path"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
-	"source" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"path" TEXT[] /* pgrx::datum::array::Array<'_, &str> */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_merge_at_path_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:37
--- jsonb_delta::merge::jsonb_merge_shallow
+-- src/binary.rs:188
+-- jsonb_delta::binary::jsonb_merge_shallow
 CREATE OR REPLACE FUNCTION "jsonb_merge_shallow"(
-	"target" jsonb, /* core::option::Option<pgrx::datum::json::JsonB> */
-	"source" jsonb /* core::option::Option<pgrx::datum::json::JsonB> */
-) RETURNS jsonb /* core::option::Option<pgrx::datum::json::JsonB> */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_merge_shallow_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:302
--- jsonb_delta::merge::jsonb_smart_patch_array
+-- src/binary.rs:591
+-- jsonb_delta::binary::jsonb_smart_patch_array
 CREATE OR REPLACE FUNCTION "jsonb_smart_patch_array"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
-	"source" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"array_path" TEXT, /* &str */
 	"match_key" TEXT, /* &str */
-	"match_value" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"match_value" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_smart_patch_array_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:255
--- jsonb_delta::merge::jsonb_smart_patch_nested
+-- src/binary.rs:1075
+-- jsonb_delta::binary::jsonb_smart_patch_nested
 CREATE OR REPLACE FUNCTION "jsonb_smart_patch_nested"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
-	"source" jsonb, /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb, /* jsonb_delta::binary::RawJsonb */
 	"path" TEXT[] /* pgrx::datum::array::Array<'_, &str> */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_smart_patch_nested_wrapper';
 /* </end connected objects> */
 
 /* <begin connected objects> */
--- src/merge.rs:217
--- jsonb_delta::merge::jsonb_smart_patch_scalar
+-- src/binary.rs:580
+-- jsonb_delta::binary::jsonb_smart_patch_scalar
 CREATE OR REPLACE FUNCTION "jsonb_smart_patch_scalar"(
-	"target" jsonb, /* pgrx::datum::json::JsonB */
-	"source" jsonb /* pgrx::datum::json::JsonB */
-) RETURNS jsonb /* pgrx::datum::json::JsonB */
+	"target" jsonb, /* jsonb_delta::binary::RawJsonb */
+	"source" jsonb /* jsonb_delta::binary::RawJsonb */
+) RETURNS jsonb /* jsonb_delta::binary::RawJsonb */
 IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'jsonb_smart_patch_scalar_wrapper';
 /* </end connected objects> */
-

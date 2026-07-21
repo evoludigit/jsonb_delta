@@ -80,7 +80,7 @@ Updated 9 test functions to match new signatures:
 
 ### 4. Created SQL Installation Script
 
-Manually created `/home/lionel/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_ivm--0.1.0.sql` with all 3 function definitions.
+Manually created `/home/lionel/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_delta--0.1.0.sql` with all 3 function definitions.
 
 **Note**: pgrx 0.12.8 discovered the 3 SQL entities but didn't automatically generate the SQL file. This may be a pgrx configuration issue to investigate separately.
 
@@ -150,7 +150,7 @@ The issue was **`Option<&str>` breaking pgrx SQL generation** (pgrx issue #268):
 ## Files Modified
 
 - `src/lib.rs`: Function signatures and test functions
-- `/home/lionel/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_ivm--0.1.0.sql`: Manual SQL file creation
+- `/home/lionel/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_delta--0.1.0.sql`: Manual SQL file creation
 
 ## Next Steps
 

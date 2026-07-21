@@ -2,25 +2,41 @@
 
 This document contains detailed performance benchmarks for the `jsonb_delta` extension.
 
+> **Authoritative numbers live in the dated artifact, not here.** The
+> per-operation ratios below (Summary + Methodology) are current, keyed to
+> [`benchmarks/2026-07-21-issue15-ccx13.md`](../benchmarks/2026-07-21-issue15-ccx13.md)
+> (Hetzner CCX13 / PostgreSQL 17.10, raw per-trial timings committed). Any
+> absolute-millisecond figure in the **detailed per-function sections further
+> down predates the harness and is illustrative only** — hardware-dependent and
+> superseded by the artifact. Trust the artifact's ratios, not those.
+
 ## Benchmark Methodology
 
-All benchmarks are run on:
-- PostgreSQL 17+ (latest stable)
-- Test data: 1000 JSONB documents with nested arrays (10-100 elements each)
-- Warm cache (queries run 3× before measurement)
-- Average of 10 runs, median reported
-
-Benchmark scripts are available in [`test/benchmark_*.sql`](../test/).
+Benchmarks are taken with the A/B harness in
+[`test/bench/harness.sql`](../test/bench/harness.sql): 3 warm-up trials, then 10
+measured trials with the two arms interleaved, median and p95 reported, and **no
+ratio reported unless both arms produce byte-identical output**. Every figure is
+keyed to a rentable machine profile and a commit — the current run is Hetzner
+CCX13 (dedicated 2 vCPU) / PostgreSQL 17.10, in
+[`benchmarks/2026-07-21-issue15-ccx13.md`](../benchmarks/2026-07-21-issue15-ccx13.md),
+with the raw per-trial timings committed alongside so the statistics can be
+recomputed rather than trusted.
 
 ## Summary
 
+Baseline is native `jsonb_set` + `jsonb_agg` re-aggregation (or `||` for merge);
+> 1× means jsonb_delta is faster. Full per-scenario numbers — including the parity
+and slower cases — are in
+[`benchmarks/2026-07-21-issue15-ccx13.md`](../benchmarks/2026-07-21-issue15-ccx13.md).
+
 | Function | Use Case | Speedup vs Native SQL |
 |----------|----------|----------------------|
-| `jsonb_array_update_where` | Single element update | **2-3×** |
-| `jsonb_array_update_where_batch` | Batch updates (10 items) | **3-5×** |
-| `jsonb_array_update_multi_row` | Multi-row updates (100 rows) | **~4×** |
-| `jsonb_array_delete_where` | Delete array element | **5-7×** |
-| `jsonb_merge_shallow` | Top-level merge | **1.5-2×** |
+| `jsonb_array_update_where` | Single element update | **1.6–3.9×** (rises with array size) |
+| `jsonb_array_delete_where` | Delete array element | **1.6–3.8×** |
+| `jsonb_apply_changeset` | Coalesce many edits in one call | **up to ~21×** vs chaining; parity at 1–2 edits |
+| `jsonb_array_update_where_batch` | Batch updates | **parity–3.6×** (grows with batch size) |
+| `jsonb_merge_shallow` | Top-level merge | **~1.0× (parity with `\|\|`)** |
+| `jsonb_array_update_multi_row` | Multi-row updates | not yet measured vs native |
 
 ## Detailed Benchmarks
 
@@ -297,12 +313,12 @@ cargo pgrx install --release
 psql -d postgres -f test/benchmark_array_update_where.sql
 ```
 
-Expected output:
+For repeatable A/B numbers with warm-up, N trials, and an output-equality guard,
+use the harness instead:
 
-```text
-Native SQL: 3.2ms average
-jsonb_delta:  1.1ms average
-Speedup:    2.9×
+```bash
+psql -d bench -f test/bench/harness.sql -f test/bench/scenarios_issue15.sql \
+  -c 'SELECT * FROM bench.run_all();' -c 'SELECT * FROM bench.report;'
 ```
 
 ---

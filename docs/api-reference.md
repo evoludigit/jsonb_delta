@@ -51,8 +51,9 @@ jsonb_smart_patch_scalar(target jsonb, source jsonb) RETURNS jsonb
 
 ### jsonb_smart_patch_scalar - Performance
 
-- **3-7× faster** than SQL re-aggregation for array updates
+- Walks the binary jsonb form directly instead of round-tripping through a text serialization
 - Optimized integer ID matching with SIMD-friendly loops
+- Not separately benchmarked against native SQL; for measured array update/delete ratios (1.6–3.9× vs re-aggregation) see [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md)
 
 ### jsonb_smart_patch_scalar - Examples
 
@@ -128,7 +129,7 @@ jsonb_array_delete_where(
 
 ### jsonb_array_delete_where - Performance
 
-- **5-7× faster** than SQL re-aggregation for deletes
+- **1.6–3.8× faster** than SQL re-aggregation for a single-element delete, rising with array size (measured; see [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md))
 - Single-pass array reconstruction
 
 ### jsonb_array_delete_where - Examples
@@ -203,8 +204,9 @@ jsonb_array_insert_where(
 
 ### jsonb_array_insert_where - Performance
 
-- **4-6× faster** than SQL re-aggregation for inserts
-- Optimized insertion point search
+- Rebuilds only the changed array spine instead of re-aggregating the whole array
+- Optimized insertion point search (binary search on sorted arrays)
+- Insert is not in the measured matrix; for the measured update/delete ratios (1.6–3.9× vs re-aggregation) see [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md)
 
 ### jsonb_array_insert_where - Examples
 
@@ -354,7 +356,7 @@ jsonb_deep_merge(target jsonb, source jsonb) RETURNS jsonb
 
 ### jsonb_deep_merge - Performance
 
-- **2× faster** than native PostgreSQL `||` operator for deep structures
+- **At parity** with the native `||` operator (both walk jsonb's binary form); the value is deep (recursive) merge semantics `||` does not provide, not raw speed. Measured parity in [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md)
 - Optimized recursive algorithm
 
 ### jsonb_deep_merge - Examples
@@ -467,8 +469,7 @@ jsonb_array_update_where(
 ) RETURNS jsonb
 ```
 
-**Performance**: O(n) where n = array length. 2-3× faster than native SQL re-aggregation.
-With SIMD optimization (v0.2.0), up to 6× faster for large arrays (1000+ elements).
+**Performance**: O(n) where n = array length. Measured **1.7–2.5×** faster than native SQL re-aggregation for integer keys (up to ~3.9× for text keys), and the ratio **rises** with array size rather than falling. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 
@@ -500,7 +501,7 @@ jsonb_array_update_where_batch(
 ) RETURNS jsonb
 ```
 
-**Performance**: O(n+m) where n=array length, m=updates count. **3-5× faster** than m separate function calls.
+**Performance**: one pass over the array instead of one pass per update. Measured at parity (~1.07×) with native re-aggregation for 10 updates in a 100-element array; the current implementation scans the spec list per element (O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update counts. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 
@@ -534,7 +535,7 @@ jsonb_array_update_multi_row(
 ) RETURNS jsonb[]
 ```
 
-**Performance**: Amortizes FFI overhead. **~4× faster** for 100-row batches.
+**Performance**: amortizes per-call FFI overhead across the batch. **Not substantiated against native SQL** — not in the CCX13 matrix (needs an array-of-documents fixture); dev-host measured only ~2× binary-vs-serde. The earlier "~4×" figure predates measurement. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 
@@ -675,16 +676,22 @@ FROM tv_feed;
 
 ## Performance Characteristics
 
-| Function | Native SQL Time | jsonb_delta Time | Speedup |
-|----------|----------------|----------------|---------|
-| `jsonb_smart_patch_scalar` | 1.2 ms | 0.4 ms | **3.0×** |
-| `jsonb_smart_patch_array` | 1.91 ms | 0.72 ms | **2.66×** |
-| `jsonb_array_delete_where` | 20-30 ms | 4-6 ms | **5-7×** |
-| `jsonb_array_insert_where` | 22-35 ms | 5-8 ms | **4-6×** |
-| `jsonb_deep_merge` | 8-12 ms | 4-6 ms | **2×** |
-| `jsonb_array_update_where` (SIMD) | 6.5 ms | 1.1 ms | **6×** |
+Measured on a rentable machine profile (Hetzner CCX13, PostgreSQL 17.10, release
+build). Ratios are `native_median / jsonb_delta_median`, so > 1 is faster than
+the native baseline. Full method and per-size numbers:
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
-**Benchmarks**: See [benchmark-results.md](implementation/benchmark-results.md) for detailed analysis.
+| Operation | Speedup vs native | Notes |
+|-----------|-------------------|-------|
+| `jsonb_array_update_where` (single element) | **1.7–2.5×** | rises with array size |
+| `jsonb_array_delete_where` (single element) | **1.6–3.8×** | rises with array size |
+| `jsonb_merge_shallow` vs `\|\|` | **parity (~1.0×)** | not a speedup over the built-in |
+| `jsonb_array_update_where_batch` vs re-aggregation | **parity (~1.07×)** | single pass; O(elements × specs) today |
+| `jsonb_apply_changeset` vs N chained patches | **up to ~21×** at high N | small loss at 1–2 edits |
+
+The earlier per-function millisecond table on this page cited figures that
+predated measurement; issue #15 was correct that they did not reproduce. The
+ratios above replace them.
 
 ---
 

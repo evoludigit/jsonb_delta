@@ -1,7 +1,7 @@
 \timing on
 
 -- Test SIMD performance on large arrays
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 \echo '========================================'
 \echo 'BENCHMARK: SIMD Array Scanning'

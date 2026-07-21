@@ -34,8 +34,19 @@ use crate::value_type_name;
 /// # Notes
 /// - Performs shallow merge only (nested objects are replaced, not merged)
 /// - For deeply nested updates, use `jsonb_merge_at_path` (planned for v0.2.0)
-#[pg_extern(immutable, parallel_safe, strict)]
-pub fn jsonb_merge_shallow(target: Option<JsonB>, source: Option<JsonB>) -> Option<JsonB> {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_merge_shallow_reference"
+    )
+)]
+pub fn jsonb_merge_shallow_reference(
+    target: Option<JsonB>,
+    source: Option<JsonB>,
+) -> Option<JsonB> {
     // Handle NULL inputs - marked with `strict` so PostgreSQL handles this,
     // but we keep explicit handling for clarity
     let target = target?;
@@ -96,8 +107,20 @@ pub fn jsonb_merge_shallow(target: Option<JsonB>, source: Option<JsonB>) -> Opti
 /// -- Returns: {"id": 1, "network_configuration": {"id": 17, "name": "updated"}}
 /// ```
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-pub fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: pgrx::Array<&str>) -> JsonB {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_merge_at_path_reference"
+    )
+)]
+pub fn jsonb_merge_at_path_reference(
+    target: JsonB,
+    source: JsonB,
+    path: pgrx::Array<&str>,
+) -> JsonB {
     // No Option unwrapping needed - strict guarantees non-NULL
     let mut target_value: Value = target.0;
 
@@ -214,10 +237,18 @@ pub fn jsonb_merge_at_path(target: JsonB, source: JsonB, path: pgrx::Array<&str>
 /// SET data = jsonb_smart_patch_scalar(data, NEW.data)
 /// WHERE pk_company = NEW.pk_company;
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_smart_patch_scalar_reference"
+    )
+)]
 #[must_use]
-pub fn jsonb_smart_patch_scalar(target: JsonB, source: JsonB) -> JsonB {
-    jsonb_merge_shallow(Some(target), Some(source))
+pub fn jsonb_smart_patch_scalar_reference(target: JsonB, source: JsonB) -> JsonB {
+    jsonb_merge_shallow_reference(Some(target), Some(source))
         .expect("jsonb_merge_shallow should not return NULL with valid inputs")
 }
 
@@ -230,7 +261,7 @@ pub fn jsonb_smart_patch_scalar(target: JsonB, source: JsonB) -> JsonB {
 ///
 /// * `target` - Current JSONB document
 /// * `source` - JSONB object to merge
-/// * `path` - Path to nested object (e.g., ARRAY['user', 'company'])
+/// * `path` - Path to nested object (e.g., `ARRAY['user', 'company']`)
 ///
 /// # Returns
 ///
@@ -252,10 +283,22 @@ pub fn jsonb_smart_patch_scalar(target: JsonB, source: JsonB) -> JsonB {
 /// SET data = jsonb_smart_patch_nested(data, NEW.data, ARRAY['company'])
 /// WHERE pk_user IN (SELECT pk_user FROM user_has_company WHERE fk_company = NEW.pk_company);
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_smart_patch_nested_reference"
+    )
+)]
 #[must_use]
-pub fn jsonb_smart_patch_nested(target: JsonB, source: JsonB, path: pgrx::Array<&str>) -> JsonB {
-    jsonb_merge_at_path(target, source, path)
+pub fn jsonb_smart_patch_nested_reference(
+    target: JsonB,
+    source: JsonB,
+    path: pgrx::Array<&str>,
+) -> JsonB {
+    jsonb_merge_at_path_reference(target, source, path)
 }
 
 /// Smart JSONB patch for array element updates
@@ -299,9 +342,17 @@ pub fn jsonb_smart_patch_nested(target: JsonB, source: JsonB, path: pgrx::Array<
 /// )
 /// WHERE data->'posts' @> jsonb_build_array(jsonb_build_object('id', NEW.pk_post));
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_smart_patch_array_reference"
+    )
+)]
 #[allow(clippy::needless_pass_by_value)] // pgrx FFI signature required
-pub fn jsonb_smart_patch_array(
+pub fn jsonb_smart_patch_array_reference(
     target: JsonB,
     source: JsonB,
     array_path: &str,
@@ -381,9 +432,12 @@ pub fn jsonb_smart_patch_array(
 /// )
 /// WHERE data->>'company_id' = '123';
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(immutable, parallel_safe, strict, name = "jsonb_deep_merge_reference")
+)]
 #[must_use]
-pub fn jsonb_deep_merge(target: JsonB, source: JsonB) -> JsonB {
+pub fn jsonb_deep_merge_reference(target: JsonB, source: JsonB) -> JsonB {
     let target_val = target.0;
     let source_val = source.0;
 

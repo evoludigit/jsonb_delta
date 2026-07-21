@@ -5,11 +5,14 @@
 CREATE OR REPLACE FUNCTION generate_uuid_test_data()
 RETURNS void AS $$
 BEGIN
-    -- Drop existing test tables
+    -- Drop existing test tables (every object created below, so the generator
+    -- is safe to re-run — CREATE TABLE has no IF NOT EXISTS to fall back on).
     DROP TABLE IF EXISTS bench_uuid_dns_servers CASCADE;
     DROP TABLE IF EXISTS bench_uuid_network_configs CASCADE;
     DROP TABLE IF EXISTS bench_uuid_allocations CASCADE;
     DROP TABLE IF EXISTS bench_uuid_nc_dns_mapping CASCADE;
+    DROP TABLE IF EXISTS v_uuid_dns_server CASCADE;
+    DROP TABLE IF EXISTS tv_uuid_network_configuration CASCADE;
 
     -- Base table: DNS servers with UUIDs (500 records)
     CREATE TABLE bench_uuid_dns_servers (

@@ -10,7 +10,7 @@ RESULTS_DIR="$PROJECT_ROOT/results"
 TEST_DIR="$PROJECT_ROOT/test"
 
 # Database configuration
-DB_NAME="${DB_NAME:-jsonb_ivm_test}"
+DB_NAME="${DB_NAME:-jsonb_delta_test}"
 PG_VERSION="${PG_VERSION:-17}"
 
 # Colors for output
@@ -88,8 +88,8 @@ psql -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null || true
 psql -d postgres -c "CREATE DATABASE $DB_NAME;" || error "Failed to create database"
 
 # Load extension
-log "Loading jsonb_ivm extension..."
-psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS jsonb_ivm;" || error "Failed to load extension"
+log "Loading jsonb_delta extension..."
+psql -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS jsonb_delta;" || error "Failed to load extension"
 
 success "Test database ready"
 echo ""

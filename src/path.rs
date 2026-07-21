@@ -124,7 +124,7 @@ pub fn parse_path(path: &str) -> Result<Vec<PathSegment>, String> {
 ///
 /// # Examples
 /// ```
-/// use serde_json::json;
+/// use jsonb_delta::serde_json::json;
 /// use jsonb_delta::path::{parse_path, navigate_path};
 ///
 /// let data = json!({
@@ -185,7 +185,7 @@ fn ensure_array_capacity(arr: &mut Vec<Value>, idx: usize) -> Result<(), String>
 ///
 /// # Examples
 /// ```
-/// use serde_json::json;
+/// use jsonb_delta::serde_json::json;
 /// use jsonb_delta::path::{parse_path, set_path};
 ///
 /// let mut data = json!({"user": {"profile": {}}});

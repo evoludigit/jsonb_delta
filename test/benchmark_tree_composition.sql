@@ -4,7 +4,7 @@
 \timing on
 \set ON_ERROR_STOP on
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 \echo '========================================'
 \echo 'BENCHMARK: Deep JSONB Tree Composition'
@@ -204,9 +204,11 @@ ROLLBACK;
 \echo '=== Benchmark 5: Multi-level cascade (Address → Profile → Aggregated Report) ==='
 \echo ''
 
--- Create aggregated report view (top-level projection)
-DROP MATERIALIZED VIEW IF EXISTS v_tree_user_report CASCADE;
-CREATE MATERIALIZED VIEW v_tree_user_report AS
+-- Create aggregated report projection (top-level, mutable working copy).
+-- A regular table, not a materialized view: Benchmark 5 UPDATEs it to model the
+-- cascade, and matviews are read-only.
+DROP TABLE IF EXISTS v_tree_user_report CASCADE;
+CREATE TABLE v_tree_user_report AS
 SELECT
     id,
     jsonb_build_object(

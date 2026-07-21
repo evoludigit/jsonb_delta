@@ -4,10 +4,10 @@
       "pattern": "^http://localhost"
     },
     {
-      "pattern": "^https://github.com/evoludigit/jsonb_ivm/discussions"
+      "pattern": "^https://github.com/evoludigit/jsonb_delta/discussions"
     },
     {
-      "pattern": "^https://docs.rs/jsonb_ivm"
+      "pattern": "^https://docs.rs/jsonb_delta"
     },
     {
       "pattern": "^https://docs.rs/jsonb_delta"

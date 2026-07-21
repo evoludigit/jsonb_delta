@@ -1,0 +1,9 @@
+# jsonb_delta benchmark machine profile
+provider:      Hetzner Cloud
+instance:      ccx13 (dedicated vCPU)
+location:      nbg1
+image:         ubuntu-24.04
+commit:        5c2377d
+cpu:           AMD EPYC-Milan Processor
+vcpu/ram:      2 vCPU / 7 GB
+postgresql:    psql (PostgreSQL) 17.10 (Ubuntu 17.10-1.pgdg24.04+1)
