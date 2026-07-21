@@ -116,7 +116,7 @@ jsonb_array_update_where(target jsonb, array_path text, match_key text, match_va
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: 2-3× faster than native SQL re-aggregation.
+**Performance**: measured **1.7–2.5×** faster than native SQL re-aggregation for integer keys (up to ~3.9× for text keys), rising with array size. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Use Case**: Incrementally update a single item in an array (e.g., update one order in a customer's order list).
 
@@ -145,7 +145,7 @@ SELECT jsonb_array_update_where(
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: 3-5× faster than multiple separate `jsonb_array_update_where` calls.
+**Performance**: single-pass over the array instead of one pass per update. Measured at parity (~1.07×) with native re-aggregation for 10 updates in a 100-element array; the current implementation scans the spec list per element (O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update counts. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Use Case**: Update multiple items in an array in a single operation.
 
@@ -180,7 +180,7 @@ jsonb_array_update_multi_row(targets jsonb[], array_path text, match_key text, m
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: ~4× faster for 100-row batches.
+**Performance**: amortizes per-call FFI overhead across the batch. **Not substantiated against native SQL** — this function is not in the CCX13 matrix (it needs an array-of-documents fixture); dev-host measurements showed only ~2× binary-vs-serde, not a ratio against a native baseline. The earlier "~4×" figure predates measurement.
 
 **Use Case**: Bulk update operations across multiple rows (e.g., mark all pending orders as shipped).
 
@@ -315,7 +315,7 @@ SELECT jsonb_array_insert_where(
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: 5-7× faster than re-aggregation approaches.
+**Performance**: 1.6–3.8× faster than native re-aggregation for a single-element delete, rising with array size (measured; see [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md)).
 
 **Use Case**: Remove specific items from arrays without rebuilding.
 

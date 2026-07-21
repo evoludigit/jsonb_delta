@@ -38,7 +38,7 @@ Surgical, in-place JSONB updates:
 
 ## Design Goals
 
-1. **Performance**: 2-7× faster than native SQL re-aggregation
+1. **Performance**: 1.6–3.9× faster than native SQL re-aggregation for single-element array update/delete, rising with array size (measured; see [Benchmarked Performance](#benchmarked-performance))
 2. **Safety**: Memory-safe via Rust ownership system
 3. **Correctness**: Preserve data integrity, no silent failures
 4. **Ergonomics**: Simple API, clear intent
@@ -66,15 +66,22 @@ All functions: **O(1)** auxiliary space (no temporary copies of entire documents
 
 ### Benchmarked Performance
 
-| Operation | Native SQL | jsonb_ivm | Speedup |
-|-----------|-----------|-----------|---------|
-| Single array update (50 elements) | 1.91 ms | **0.72 ms** | **2.66×** |
-| Array INSERT (100 elements) | 22-35 ms | **5-8 ms** | **4-6×** |
-| Array DELETE (100 elements) | 20-30 ms | **4-6 ms** | **5-7×** |
-| Deep merge (3 levels) | 8-12 ms | **4-6 ms** | **2×** |
-| Cascade (100 updates) | 870 ms | **600 ms** | **1.45×** |
+Measured on a rentable machine profile (Hetzner CCX13, PostgreSQL 17.10, release
+build); full method and per-size numbers in
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
+Ratios are `native_median / jsonb_delta_median`, so > 1 is faster than the native
+SQL baseline (`jsonb_set` + `jsonb_agg` re-aggregation).
 
-See [benchmark-results.md](implementation/benchmark-results.md) for full details.
+| Operation | Speedup vs native | Notes |
+|-----------|-------------------|-------|
+| Array update (single element) | **1.7–2.5×** | rises with array size |
+| Array delete (single element) | **1.6–3.8×** | rises with array size |
+| `jsonb_merge_shallow` vs `\|\|` | **parity (~1.0×)** | not a speedup over the built-in |
+| `jsonb_apply_changeset` vs N chained patches | **up to ~21×** at high N | small loss at 1–2 edits |
+
+Earlier drafts of this table cited 2–7× / 5–7× figures that predate measurement;
+issue #15 was correct that they did not reproduce, and the numbers above replace
+them.
 
 ---
 
