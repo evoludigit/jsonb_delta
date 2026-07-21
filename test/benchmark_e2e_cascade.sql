@@ -99,7 +99,7 @@ WHERE id IN (
 \echo '--- Step 3: Propagate to test_tv_allocation (SURGICAL MERGE) ---'
 UPDATE test_tv_allocation a
 SET data = jsonb_merge_at_path(
-    data,
+    a.data,
     nc.data,
     ARRAY['network_configuration']
 )
