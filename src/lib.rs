@@ -60,6 +60,11 @@ mod merge;
 pub mod path; // Public for doc tests
 mod search;
 
+// Exported-signature contract test (issue #12). Test-only: it introspects
+// pg_proc under the pgrx test harness, so it is gated like the other pg_test code.
+#[cfg(any(test, feature = "pg_test"))]
+mod contract;
+
 // Property-based testing infrastructure
 #[cfg(test)]
 mod property_tests;
