@@ -1569,6 +1569,216 @@ unsafe fn insert_into_array(
 }
 
 // ---------------------------------------------------------------------------
+// Path set
+//
+// The general nested setter: descend a path of object keys and array indices,
+// creating intermediate containers and padding arrays with nulls exactly as the
+// serde `set_path` does, and rebuild only the spine. Off-path keys and elements
+// pass through as binary values. The rebuild recurses one level per path
+// segment, so recursion depth is the path length -- bounded below.
+// ---------------------------------------------------------------------------
+
+/// The array container behind a value, or null when it is not an array.
+///
+/// # Safety
+///
+/// `v` must be an initialized `JsonbValue` whose payload outlives the call.
+unsafe fn array_container(v: &pg_sys::JsonbValue) -> *mut pg_sys::JsonbContainer {
+    unsafe {
+        if v.type_ == pg_sys::jbvType::jbvBinary
+            && (*v.val.binary.data).header & pg_sys::JB_FARRAY != 0
+        {
+            v.val.binary.data
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Build the value for one path level: the existing `node` (or `None` when the
+/// key/index was absent or the wrong type) with `value` set at `segs`, and
+/// return the value from the closing push.
+///
+/// Mirrors `crate::path::set_path` exactly, including its destructive create:
+/// a level whose existing value is the wrong container type is replaced by a
+/// fresh empty one (its contents dropped), and array indexing pads with JSON
+/// nulls up to the index.
+///
+/// # Safety
+///
+/// `segs` must be non-empty; `node`, `value`, and every container reached
+/// through them must outlive the call.
+unsafe fn push_value_for_level(
+    node: Option<&pg_sys::JsonbValue>,
+    segs: &[crate::path::PathSegment],
+    value: &pg_sys::JsonbValue,
+    state: *mut *mut pg_sys::JsonbParseState,
+) -> *mut pg_sys::JsonbValue {
+    use crate::path::PathSegment;
+    let is_last = segs.len() == 1;
+    unsafe {
+        match &segs[0] {
+            PathSegment::Key(key) => {
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                    std::ptr::null_mut(),
+                );
+                // Copy every off-path key of the existing object; remember the
+                // on-path child if it is there.
+                let mut child: Option<pg_sys::JsonbValue> = None;
+                let container = node.map_or(std::ptr::null_mut(), |v| object_container(v));
+                if !container.is_null() {
+                    let mut it = pg_sys::JsonbIteratorInit(container);
+                    let mut k = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    let mut v = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    pg_sys::JsonbIteratorNext(&raw mut it, &raw mut k, true);
+                    loop {
+                        let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut k, true);
+                        if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                            break;
+                        }
+                        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut v, true);
+                        let is_key = k.type_ == pg_sys::jbvType::jbvString
+                            && usize::try_from(k.val.string.len).unwrap_or(0) == key.len()
+                            && std::slice::from_raw_parts(k.val.string.val.cast::<u8>(), key.len())
+                                == key.as_bytes();
+                        if is_key {
+                            child = Some(v);
+                        } else {
+                            pg_sys::pushJsonbValue(
+                                state,
+                                pg_sys::JsonbIteratorToken::WJB_KEY,
+                                &raw mut k,
+                            );
+                            pg_sys::pushJsonbValue(
+                                state,
+                                pg_sys::JsonbIteratorToken::WJB_VALUE,
+                                &raw mut v,
+                            );
+                        }
+                    }
+                }
+                let mut kk = key_value(key);
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_KEY, &raw mut kk);
+                if is_last {
+                    let mut val = *value;
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_VALUE,
+                        &raw mut val,
+                    );
+                } else {
+                    push_value_for_level(child.as_ref(), &segs[1..], value, state);
+                }
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                    std::ptr::null_mut(),
+                )
+            }
+            PathSegment::Index(idx) => {
+                let idx = *idx;
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                    std::ptr::null_mut(),
+                );
+                let arr = node.map_or(std::ptr::null_mut(), |v| array_container(v));
+                let elements = if arr.is_null() {
+                    Vec::new()
+                } else {
+                    collect_elements(arr)
+                };
+                let existing_len = elements.len();
+
+                // Elements before the target index: the existing ones, then
+                // JSON-null padding to reach the index (`ensure_array_capacity`).
+                for e in elements.iter().take(idx.min(existing_len)) {
+                    let mut e = *e;
+                    pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut e);
+                }
+                for _ in existing_len..idx {
+                    let mut n = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    n.type_ = pg_sys::jbvType::jbvNull;
+                    pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut n);
+                }
+                // The target index itself.
+                if is_last {
+                    let mut val = *value;
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_ELEM,
+                        &raw mut val,
+                    );
+                } else {
+                    let child = elements.get(idx);
+                    push_value_for_level(child, &segs[1..], value, state);
+                }
+                // Trailing elements the set did not disturb.
+                for e in elements.iter().skip(idx + 1) {
+                    let mut e = *e;
+                    pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut e);
+                }
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                    std::ptr::null_mut(),
+                )
+            }
+        }
+    }
+}
+
+/// Set `value` at `path` in `target`, creating intermediates, without
+/// materializing the document.
+///
+/// Behaviourally identical to `jsonb_delta_set_path`, error text included. One
+/// deliberate divergence: the rebuild recurses one level per path segment, so a
+/// path longer than `MAX_JSONB_DEPTH` segments is rejected rather than risking
+/// the backend stack -- the serde version had the same latent unbounded
+/// recursion at output-serialization time and simply never guarded it.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_delta_set_path(target: RawJsonb, path: &str, value: RawJsonb) -> RawJsonb {
+    let segments =
+        crate::path::parse_path(path).unwrap_or_else(|e| error!("Invalid path '{}': {}", path, e));
+    if segments.len() > crate::MAX_JSONB_DEPTH {
+        error!(
+            "Failed to set path '{}': path has {} segments, exceeds maximum depth {}",
+            path,
+            segments.len(),
+            crate::MAX_JSONB_DEPTH
+        );
+    }
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        let vroot = root_as_value(&value);
+        if !depth_within(&vroot, 0, crate::MAX_JSONB_DEPTH) {
+            error!(
+                "JSONB nesting too deep (max {}, found depth {})",
+                crate::MAX_JSONB_DEPTH,
+                crate::MAX_JSONB_DEPTH + 1
+            );
+        }
+        // Every index is validated (serde does this lazily while navigating; the
+        // first over-limit index errors first either way, since the path is one
+        // chain).
+        for seg in &segments {
+            if let crate::path::PathSegment::Index(idx) = seg {
+                crate::depth::validate_array_index(*idx, crate::depth::MAX_JSONB_ARRAY_SIZE)
+                    .unwrap_or_else(|e| error!("Failed to set path '{}': {}", path, e));
+            }
+        }
+        let troot = root_as_value(&target);
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        let built = push_value_for_level(Some(&troot), &segments, &vroot, &raw mut state);
+        RawJsonb(pg_sys::JsonbValueToJsonb(built))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -2297,6 +2507,76 @@ mod tests {
                 &format!("jsonb_array_insert_where_reference('{t}','{path}','{e}',NULL,NULL)"),
             );
         }
+    }
+
+    /// The general nested setter, compared as data across creation, padding,
+    /// destructive type replacement, sibling/trailing preservation, root
+    /// replacement, container values, and every parse/index error. Run through
+    /// `assert_same_outcome` so a value result and an error message are both
+    /// covered by one comparison.
+    #[pg_test]
+    fn set_path_matches_serde() {
+        // (target, path, value)
+        let cases = [
+            // create / nested create
+            (r#"{"user":{}}"#, "user.name", r#""Alice""#),
+            (r#"{}"#, "user.profile.settings.theme", r#""dark""#),
+            (r#"{"a":1}"#, "b", r#"2"#),
+            // overwrite an existing value wholesale
+            (r#"{"a":{"b":1}}"#, "a", r#"9"#),
+            (r#"{"a":{"b":1}}"#, "a.b", r#"99"#),
+            // sibling preservation
+            (r#"{"a":1,"b":{"x":1,"y":2}}"#, "b.x", r#"99"#),
+            // destructive type replacement along the path
+            (r#"{"a":5}"#, "a.b", r#"9"#),
+            (r#"{"a":[1,2]}"#, "a.b", r#"9"#),
+            (r#"{"a":{"x":1}}"#, "a[0]", r#"9"#),
+            // array index: create, pad with nulls, preserve trailing
+            (r#"{"items":[]}"#, "items[0]", r#""first""#),
+            (r#"{"items":[]}"#, "items[3]", r#"9"#),
+            (r#"{"a":[10,20,30]}"#, "a[1]", r#"99"#),
+            (r#"{"a":[1,2,3,4,5]}"#, "a[2]", r#"99"#),
+            // mixed key/index, with creation of the whole chain
+            (r#"{"orders":[{}]}"#, "orders[0].id", r#"5"#),
+            (r#"{}"#, "a[0].b[1].c", r#"7"#),
+            // container-typed values
+            (r#"{}"#, "a", r#"{"x":1}"#),
+            (r#"{}"#, "a", r#"[1,2,3]"#),
+            // root itself is not the container the first segment needs
+            (r#"5"#, "a", r#"9"#),
+            (r#"[1,2]"#, "a", r#"9"#),
+            (r#"5"#, "[0]", r#"9"#),
+            (r#"{"a":1}"#, "[0]", r#"9"#),
+            // non-ascii key
+            (r#"{"café":{}}"#, "café.日本", r#"1"#),
+            // parse errors
+            (r#"{}"#, "a..b", r#"1"#),
+            (r#"{}"#, "a[]", r#"1"#),
+            (r#"{}"#, "a]", r#"1"#),
+            (r#"{}"#, "", r#"1"#),
+            // index over the size limit
+            (r#"{}"#, "arr[200000]", r#"1"#),
+        ];
+        for (t, path, v) in cases {
+            assert_same_outcome(
+                &format!("jsonb_delta_set_path('{t}','{path}','{v}')"),
+                &format!("jsonb_delta_set_path_reference('{t}','{path}','{v}')"),
+            );
+        }
+    }
+
+    /// Value depth is enforced at the documented 1000-level cap, the same
+    /// deliberate divergence as deep merge (the serde original trips serde_json's
+    /// ~128 parse limit long before its own guard). Asserted directly.
+    #[pg_test]
+    fn set_path_enforces_documented_depth_limit() {
+        let out = outcome(
+            r#"jsonb_delta_set_path('{}','a',(repeat('{"a":',1001)||'1'||repeat('}',1001))::jsonb)"#,
+        );
+        assert_eq!(
+            out,
+            "ERROR: JSONB nesting too deep (max 1000, found depth 1001)"
+        );
     }
 
     #[pg_test]

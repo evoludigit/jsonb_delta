@@ -389,8 +389,20 @@ fn jsonb_delta_array_update_where_path(
 /// );
 /// -- Result: {"items": ["first item"]}
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_delta_set_path(target: JsonB, path: &str, value: JsonB) -> JsonB {
+// Retained only as the differential-test oracle for the binary implementation
+// that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
+#[allow(clippy::needless_pass_by_value)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_delta_set_path_reference"
+    )
+)]
+fn jsonb_delta_set_path_reference(target: JsonB, path: &str, value: JsonB) -> JsonB {
     let mut target_value: Value = target.0;
 
     // Parse the path
