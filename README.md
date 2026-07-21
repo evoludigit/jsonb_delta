@@ -28,7 +28,7 @@ A PostgreSQL extension providing fast, targeted update primitives for JSONB docu
 | Tool | Purpose | Status | Performance Gain |
 |------|---------|--------|------------------|
 | **[pg_tviews](https://github.com/fraiseql/pg_tviews)** | Incremental materialized views | Beta | **100-500× faster** |
-| **[jsonb_delta](https://github.com/evoludigit/jsonb_delta)** | JSONB surgical updates | **Stable** ⭐ | **2-7× faster** |
+| **[jsonb_delta](https://github.com/evoludigit/jsonb_delta)** | JSONB surgical updates | **Stable** ⭐ | **1.6–3.9×; up to ~21× coalesced** |
 | **[pgGit](https://github.com/evoludigit/pgGit)** | Database version control | Stable | Git for databases |
 | **[confiture](https://github.com/fraiseql/confiture)** | PostgreSQL migrations | Stable | **300-600× faster** |
 | **[fraiseql](https://fraiseql.dev)** | GraphQL framework | Stable | **7-10× faster** |
@@ -41,7 +41,7 @@ A PostgreSQL extension providing fast, targeted update primitives for JSONB docu
 | **[graphql-cascade](https://github.com/graphql-cascade/graphql-cascade)** | Automatic cache invalidation | Apollo, React Query, Relay, URQL |
 
 **How jsonb_delta fits:**
-- **pg_tviews** uses jsonb_delta for 1.5-3× faster JSONB updates
+- **pg_tviews** uses jsonb_delta for 1.6–3.9× faster surgical JSONB updates
 - **fraiseql** GraphQL mutations update JSONB projections surgically
 - **graphql-cascade** (client-side) handles browser cache invalidation
 
@@ -120,21 +120,24 @@ WHERE id = 'cust_001';
 |----------|----------------|
 | Simple key-value merge | Native `\|\|` operator is fine |
 | Setting value at known path | Native `jsonb_set()` works well |
-| **Updating array element by ID** | **jsonb_delta** (2-3× faster) |
-| **Batch array updates** | **jsonb_delta** (3-5× faster) |
-| **Deleting array element by ID** | **jsonb_delta** (5-7× faster) |
-| **Multi-row array updates** | **jsonb_delta** (4× faster) |
+| **Updating array element by ID** | **jsonb_delta** (1.6–3.9× faster) |
+| **Deleting array element by ID** | **jsonb_delta** (1.6–3.8× faster) |
+| **Coalescing many edits in one call** | **jsonb_delta** `jsonb_apply_changeset` (up to ~21× vs chaining) |
+| **Batch array updates** | **jsonb_delta** (parity at small N, wins as N grows) |
+| **Multi-row array updates** | **jsonb_delta** (one call over many documents) |
 | **Deep nested path updates** | **jsonb_delta** (cleaner API) |
 
 ### Performance at Scale
 
-The performance gap widens with array size:
+The win holds up as arrays grow (single-element update, in-memory, integer key;
+measured on Hetzner CCX13 / PostgreSQL 17.10 — see
+[benchmarks](benchmarks/2026-07-21-issue15-ccx13.md)):
 
-| Array Size | Native SQL | jsonb_delta | Speedup |
-|------------|------------|-----------|---------|
-| 10 elements | 0.8ms | 0.4ms | 2.0× |
-| 100 elements | 6.8ms | 2.1ms | 3.2× |
-| 1000 elements | 82ms | 23ms | 3.6× |
+| Array Size | Native re-aggregation | jsonb_delta | Speedup |
+|------------|-----------------------|-------------|---------|
+| 10 elements | 0.09 ms | 0.04 ms | 2.1× |
+| 100 elements | 0.18 ms | 0.07 ms | 2.5× |
+| 1000 elements | 2.42 ms | 1.03 ms | 2.4× |
 
 **Why?** Native SQL must:
 
@@ -149,7 +152,7 @@ jsonb_delta uses single-pass iteration with minimal allocations.
 ## Features
 
 - ✅ **Complete CRUD** for JSONB arrays (create, read, update, delete)
-- ⚡ **2-7× faster** than native SQL re-aggregation
+- ⚡ **1.6–3.9× faster** than native SQL re-aggregation for surgical update/delete ([benchmarks](benchmarks/2026-07-21-issue15-ccx13.md))
 - 🎯 **Surgical updates** - modify only what changed
 - 🛡️ **Null-safe** - graceful handling of missing paths/keys
 - 🔧 **Production-ready** - extensively tested on PostgreSQL 13-18
@@ -350,31 +353,40 @@ WHERE id = 1;
 
 ### Benchmark Results
 
-| Operation | Native SQL | jsonb_delta | Speedup |
-|-----------|-----------|-----------|---------|
-| Array element update | 3.2 ms | 1.1 ms | **2.9×** |
-| Array DELETE | 4.1 ms | 0.6 ms | **6.8×** |
-| Batch update (10 items) | 32 ms | 6 ms | **5.2×** |
-| Multi-row (100 rows) | 450 ms | 110 ms | **4.1×** |
+Measured on a rentable, reproducible profile — Hetzner CCX13 (dedicated 2 vCPU,
+AMD EPYC-Milan), PostgreSQL 17.10, release build, `pg_tviews`-free. Full artifact
+with raw per-trial timings:
+[`benchmarks/2026-07-21-issue15-ccx13.md`](benchmarks/2026-07-21-issue15-ccx13.md).
+Ratios are jsonb_delta vs the native SQL baseline (`jsonb_set` + `jsonb_agg`
+re-aggregation, or `||` for merge); > 1 means jsonb_delta is faster.
+
+| Operation | Native | jsonb_delta | Speedup |
+|-----------|--------|-------------|---------|
+| Update 1 element (1000-elem array, in-memory) | 2.42 ms | 1.03 ms | **2.4×** |
+| Delete 1 element (1000-elem array, in-memory) | 2.21 ms | 0.58 ms | **3.8×** |
+| Shallow merge vs `\|\|` | 0.27 ms | 0.26 ms | **~1.0× (parity)** |
+| Coalesce 50 edits vs chaining (500-elem doc) | 23.5 ms | 1.1 ms | **21×** |
+
+Where jsonb_delta is at parity or slower — shallow merge vs `||`, one- or two-op
+changesets, small batches — the artifact says so explicitly rather than omitting it.
 
 ### Performance Scaling by Array Size
 
+Single-element update, in-memory, integer key (CCX13). The win holds up as arrays
+grow, rather than collapsing — which the serde v0.2.0 build did (see [#15](https://github.com/evoludigit/jsonb_delta/issues/15)):
+
 ```
 Array Size: 10 elements
-├── Native SQL: 0.8ms
-└── jsonb_delta: 0.4ms (2.0× faster)
+├── Native re-aggregation: 0.09ms
+└── jsonb_delta:           0.04ms (2.1× faster)
 
 Array Size: 100 elements
-├── Native SQL: 6.8ms
-└── jsonb_delta: 2.1ms (3.2× faster)
+├── Native re-aggregation: 0.18ms
+└── jsonb_delta:           0.07ms (2.5× faster)
 
 Array Size: 1000 elements
-├── Native SQL: 82ms
-└── jsonb_delta: 23ms (3.6× faster)
-
-Array Size: 10000 elements
-├── Native SQL: 1.2s
-└── jsonb_delta: 180ms (6.7× faster)
+├── Native re-aggregation: 2.42ms
+└── jsonb_delta:           1.03ms (2.4× faster)
 ```
 
 ### Memory Efficiency
