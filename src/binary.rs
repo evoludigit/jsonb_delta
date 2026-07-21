@@ -2178,6 +2178,284 @@ fn jsonb_array_update_multi_row(
 }
 
 // ---------------------------------------------------------------------------
+// Coalesced changeset
+//
+// Unlike every function above, applying an ordered changeset of many
+// heterogeneous ops needs a mutable document: op i+1 sees op i's effect, and the
+// ops touch arbitrary paths in arbitrary order. That is what serde's Value tree
+// is for, and its op logic is already audited and tested. What is wasteful is
+// how pgrx's `JsonB` gets there and back -- jsonb -> text (jsonb_out) -> Value
+// (serde parse) on the way in, and the reverse on the way out, four passes, two
+// through a text form nothing needs.
+//
+// This replaces the input half with a direct binary -> Value walk and reuses the
+// existing op logic unchanged. Numbers go through their canonical text so the
+// integer-vs-float choice and the f64 rounding match serde_json's parser exactly
+// -- which matters because serde_json is built without arbitrary_precision, so
+// this path is deliberately as lossy as the serde original (1.50 -> 1.5), not
+// more precise. Being more precise would *diverge* from the function it replaces.
+// ---------------------------------------------------------------------------
+
+/// Convert a jsonb value to a `serde_json::Value` exactly as pgrx's `JsonB`
+/// (jsonb_out then `serde_json::from_str`) would, but without the text form.
+///
+/// # Safety
+///
+/// `v`'s payload and everything reached through it must outlive the call.
+unsafe fn value_from_jbv(v: &pg_sys::JsonbValue, depth: usize) -> serde_json::Value {
+    use serde_json::Value;
+    unsafe {
+        // Bound the recursion off the backend stack. The serde original cannot
+        // reach this: its JsonB parse trips serde_json's ~128-level limit first.
+        if depth > crate::MAX_JSONB_DEPTH {
+            error!(
+                "JSONB nesting too deep (max {}, found depth {})",
+                crate::MAX_JSONB_DEPTH,
+                crate::MAX_JSONB_DEPTH + 1
+            );
+        }
+        match v.type_ {
+            pg_sys::jbvType::jbvNull => Value::Null,
+            pg_sys::jbvType::jbvBool => Value::Bool(v.val.boolean),
+            pg_sys::jbvType::jbvString => {
+                let n = usize::try_from(v.val.string.len).unwrap_or(0);
+                let bytes = std::slice::from_raw_parts(v.val.string.val.cast::<u8>(), n);
+                Value::String(String::from_utf8_lossy(bytes).into_owned())
+            }
+            pg_sys::jbvType::jbvNumeric => {
+                // The canonical numeric text is what jsonb_out emits, so parsing
+                // it through serde reproduces the exact Number pgrx would build.
+                pgrx::AnyNumeric::from_datum(pg_sys::Datum::from(v.val.numeric), false)
+                    .and_then(|n| serde_json::from_str::<Value>(&n.to_string()).ok())
+                    .unwrap_or(Value::Null)
+            }
+            pg_sys::jbvType::jbvBinary => {
+                let c = v.val.binary.data;
+                if (*c).header & pg_sys::JB_FARRAY != 0 {
+                    let mut arr = Vec::new();
+                    let mut it = pg_sys::JsonbIteratorInit(c);
+                    let mut e = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    pg_sys::JsonbIteratorNext(&raw mut it, &raw mut e, true);
+                    loop {
+                        let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut e, true);
+                        if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                            break;
+                        }
+                        arr.push(value_from_jbv(&e, depth + 1));
+                    }
+                    Value::Array(arr)
+                } else {
+                    let mut map = serde_json::Map::new();
+                    let mut it = pg_sys::JsonbIteratorInit(c);
+                    let mut k = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    let mut val = std::mem::zeroed::<pg_sys::JsonbValue>();
+                    pg_sys::JsonbIteratorNext(&raw mut it, &raw mut k, true);
+                    loop {
+                        let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut k, true);
+                        if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                            break;
+                        }
+                        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut val, true);
+                        let n = usize::try_from(k.val.string.len).unwrap_or(0);
+                        let key = String::from_utf8_lossy(std::slice::from_raw_parts(
+                            k.val.string.val.cast::<u8>(),
+                            n,
+                        ))
+                        .into_owned();
+                        map.insert(key, value_from_jbv(&val, depth + 1));
+                    }
+                    Value::Object(map)
+                }
+            }
+            _ => Value::Null,
+        }
+    }
+}
+
+/// A scalar `serde_json::Value` as a `JsonbValue`, matching what jsonb_in builds
+/// from that value's canonical text. Numbers go through `numeric_in` (via
+/// `AnyNumeric`) on their serde text, so the result is exactly jsonb_in's numeric.
+///
+/// # Safety
+///
+/// The returned value borrows `v`'s string bytes / a freshly palloc'd numeric,
+/// both of which must outlive the `JsonbValueToJsonb` that consumes it.
+unsafe fn scalar_to_jbv(v: &serde_json::Value) -> pg_sys::JsonbValue {
+    use serde_json::Value;
+    unsafe {
+        let mut jbv = std::mem::zeroed::<pg_sys::JsonbValue>();
+        match v {
+            Value::Null => jbv.type_ = pg_sys::jbvType::jbvNull,
+            Value::Bool(b) => {
+                jbv.type_ = pg_sys::jbvType::jbvBool;
+                jbv.val.boolean = *b;
+            }
+            Value::String(s) => {
+                jbv.type_ = pg_sys::jbvType::jbvString;
+                jbv.val.string.len = i32::try_from(s.len()).unwrap_or(i32::MAX);
+                jbv.val.string.val = s.as_ptr().cast::<std::ffi::c_char>().cast_mut();
+            }
+            Value::Number(n) => {
+                jbv.type_ = pg_sys::jbvType::jbvNumeric;
+                let numeric = pgrx::AnyNumeric::try_from(n.to_string().as_str())
+                    .ok()
+                    .and_then(|a| a.into_datum())
+                    .expect("a serde number is valid numeric text");
+                jbv.val.numeric = numeric.cast_mut_ptr();
+            }
+            // containers are never passed here
+            _ => jbv.type_ = pg_sys::jbvType::jbvNull,
+        }
+        jbv
+    }
+}
+
+/// Push one member (`WJB_ELEM` in an array, `WJB_VALUE` in an object) of any
+/// serde value: a scalar directly, a container by recursing.
+///
+/// # Safety
+///
+/// `v` and everything reached through it must outlive the call.
+unsafe fn push_serde_member(
+    v: &serde_json::Value,
+    state: *mut *mut pg_sys::JsonbParseState,
+    elem: bool,
+) {
+    use serde_json::Value;
+    unsafe {
+        match v {
+            Value::Object(_) | Value::Array(_) => {
+                push_serde_container(v, state);
+            }
+            scalar => {
+                let mut jbv = scalar_to_jbv(scalar);
+                let tok = if elem {
+                    pg_sys::JsonbIteratorToken::WJB_ELEM
+                } else {
+                    pg_sys::JsonbIteratorToken::WJB_VALUE
+                };
+                pg_sys::pushJsonbValue(state, tok, &raw mut jbv);
+            }
+        }
+    }
+}
+
+/// Push a serde object or array as a complete jsonb value, recursing into
+/// members. Returns the value from the closing push (non-null only at the root).
+///
+/// # Safety
+///
+/// `v` must be an object or array, and outlive the call.
+unsafe fn push_serde_container(
+    v: &serde_json::Value,
+    state: *mut *mut pg_sys::JsonbParseState,
+) -> *mut pg_sys::JsonbValue {
+    use serde_json::Value;
+    unsafe {
+        match v {
+            Value::Object(map) => {
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+                    std::ptr::null_mut(),
+                );
+                for (k, val) in map {
+                    let mut kjbv = key_value(k);
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_KEY,
+                        &raw mut kjbv,
+                    );
+                    push_serde_member(val, state, false);
+                }
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+                    std::ptr::null_mut(),
+                )
+            }
+            Value::Array(arr) => {
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                    std::ptr::null_mut(),
+                );
+                for val in arr {
+                    push_serde_member(val, state, true);
+                }
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                    std::ptr::null_mut(),
+                )
+            }
+            _ => unreachable!("push_serde_container only takes containers"),
+        }
+    }
+}
+
+/// Serialize a `serde_json::Value` straight to a jsonb datum, the inverse of
+/// `value_from_jbv` and the exact output pgrx's `JsonB` would produce, without
+/// the text form.
+///
+/// # Safety
+///
+/// `v` and everything reached through it must outlive the call.
+unsafe fn value_to_jsonb(v: &serde_json::Value) -> *mut pg_sys::Jsonb {
+    use serde_json::Value;
+    unsafe {
+        match v {
+            Value::Object(_) | Value::Array(_) => {
+                let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+                let built = push_serde_container(v, &raw mut state);
+                pg_sys::JsonbValueToJsonb(built)
+            }
+            scalar => {
+                let mut jbv = scalar_to_jbv(scalar);
+                pg_sys::JsonbValueToJsonb(&raw mut jbv)
+            }
+        }
+    }
+}
+
+/// Apply an ordered changeset to a document in one parse/reserialize pass,
+/// reading the document directly from its binary form and writing the result
+/// straight back to binary.
+///
+/// Behaviourally identical to `jsonb_apply_changeset`: the op logic is the same
+/// audited serde code, only the conversions on either side skip the text form.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_apply_changeset(doc: RawJsonb, ops: RawJsonb) -> RawJsonb {
+    // Reason: pointers come from detoasted datums; the Value tree is Rust-owned.
+    unsafe {
+        let doc_root = root_as_value(&doc);
+        let mut root = value_from_jbv(&doc_root, 0);
+
+        let ops_root = root_as_value(&ops);
+        let ops_value = value_from_jbv(&ops_root, 0);
+        let Some(ops_arr) = ops_value.as_array() else {
+            error!(
+                "ops argument must be a JSONB array, got: {}",
+                crate::value_type_name(&ops_value)
+            );
+        };
+        if ops_arr.len() > crate::changeset::MAX_CHANGESET_OPS {
+            error!(
+                "changeset has {} ops, exceeds maximum {}",
+                ops_arr.len(),
+                crate::changeset::MAX_CHANGESET_OPS
+            );
+        }
+
+        crate::apply_changeset(&mut root, ops_arr).unwrap_or_else(|e| error!("{}", e));
+
+        RawJsonb(value_to_jsonb(&root))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -3289,6 +3567,133 @@ mod tests {
             assert_same_outcome(
                 &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row({tg},'{ak}','{mk}','{mv}','{up}'))"),
                 &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row_reference({tg},'{ak}','{mk}','{mv}','{up}'))"),
+            );
+        }
+    }
+
+    /// The coalesced changeset, every op type against the serde original: set /
+    /// remove / merge / deep_merge / increment / array_{update,update_all,replace,
+    /// upsert,delete,insert}, both path forms, multi-op sequences, text keys, and
+    /// -- critically -- number scale, which must be lost identically (serde_json
+    /// has no arbitrary_precision, so 1.50 becomes 1.5 in both).
+    #[pg_test]
+    fn apply_changeset_matches_serde() {
+        // (doc, ops)
+        let cases = [
+            // set: dot path, array-of-segments path, and an array index
+            (r#"{"a":1}"#, r#"[{"op":"set","path":"b.c","value":9}]"#),
+            (r#"{"a":1}"#, r#"[{"op":"set","path":["b","c"],"value":9}]"#),
+            (
+                r#"{"a":1}"#,
+                r#"[{"op":"set","path":"items[0]","value":"x"}]"#,
+            ),
+            // remove: key, index, and an absent no-op
+            (r#"{"a":1,"b":2}"#, r#"[{"op":"remove","path":"a"}]"#),
+            (r#"{"a":[1,2,3]}"#, r#"[{"op":"remove","path":"a[1]"}]"#),
+            (r#"{"a":1}"#, r#"[{"op":"remove","path":"nope"}]"#),
+            // merge (shallow), deep_merge, and empty-path merge at root
+            (
+                r#"{"a":{"x":1,"y":2}}"#,
+                r#"[{"op":"merge","path":"a","value":{"x":9}}]"#,
+            ),
+            (
+                r#"{"a":{"x":1,"n":{"p":1,"q":2}}}"#,
+                r#"[{"op":"deep_merge","path":"a","value":{"n":{"p":9}}}]"#,
+            ),
+            (r#"{"x":1}"#, r#"[{"op":"merge","value":{"y":2}}]"#),
+            // increment: integer, float, and an absent counter (starts at 0)
+            (r#"{"n":5}"#, r#"[{"op":"increment","path":"n","by":3}]"#),
+            (r#"{"n":5}"#, r#"[{"op":"increment","path":"n","by":2.5}]"#),
+            (r#"{}"#, r#"[{"op":"increment","path":"c","by":1}]"#),
+            // array ops
+            (
+                r#"{"p":[{"id":1,"n":"a"},{"id":2,"n":"b"},{"id":1,"n":"c"}]}"#,
+                r#"[{"op":"array_update","path":"p","match_key":"id","match_value":1,"value":{"n":"Z"}}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1},{"id":1}]}"#,
+                r#"[{"op":"array_update_all","path":"p","match_key":"id","match_value":1,"value":{"n":"Z"}}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1,"n":"a"}]}"#,
+                r#"[{"op":"array_replace","path":"p","match_key":"id","match_value":1,"value":{"id":1,"x":9}}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1}]}"#,
+                r#"[{"op":"array_upsert","path":"p","match_key":"id","match_value":2,"value":{"id":2,"new":true}}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1}]}"#,
+                r#"[{"op":"array_upsert","path":"p","match_key":"id","match_value":1,"value":{"z":9}}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1},{"id":2}]}"#,
+                r#"[{"op":"array_delete","path":"p","match_key":"id","match_value":1}]"#,
+            ),
+            (
+                r#"{"p":[{"id":1}]}"#,
+                r#"[{"op":"array_insert","path":"p","value":{"id":2}}]"#,
+            ),
+            (
+                r#"{"p":[{"c":1},{"c":3}]}"#,
+                r#"[{"op":"array_insert","path":"p","value":{"c":2},"sort_key":"c","sort_order":"ASC"}]"#,
+            ),
+            // multi-op coalescing in a single call
+            (
+                r#"{"stats":{"count":10},"posts":[{"id":1}]}"#,
+                r#"[{"op":"increment","path":"stats.count","by":1},{"op":"array_insert","path":"posts","value":{"id":2}},{"op":"set","path":"updated","value":true}]"#,
+            ),
+            // number scale is lost identically (the correctness risk of this port)
+            (r#"{"price":1.50,"qty":2}"#, r#"[]"#),
+            (
+                r#"{"price":1.50}"#,
+                r#"[{"op":"set","path":"x","value":1}]"#,
+            ),
+            (
+                r#"{"a":-5,"b":0,"big":9007199254740993}"#,
+                r#"[{"op":"set","path":"c","value":1}]"#,
+            ),
+            // text match key
+            (
+                r#"{"p":[{"id":"a"},{"id":"b"}]}"#,
+                r#"[{"op":"array_update","path":"p","match_key":"id","match_value":"b","value":{"x":9}}]"#,
+            ),
+            // a non-object document, replaced wholesale by a root set
+            (r#"5"#, r#"[{"op":"set","path":"","value":{"a":1}}]"#),
+        ];
+        for (doc, ops) in cases {
+            assert_same_outcome(
+                &format!("jsonb_apply_changeset('{doc}','{ops}')"),
+                &format!("jsonb_apply_changeset_reference('{doc}','{ops}')"),
+            );
+        }
+    }
+
+    /// Every malformed changeset raises identically: unknown op, missing op /
+    /// value fields, a non-object op, a non-array ops argument, a wrong-typed
+    /// increment, a non-object merge value, and an integer overflow.
+    #[pg_test]
+    fn apply_changeset_errors_match_serde() {
+        let cases = [
+            (r#"{"a":1}"#, r#"[{"op":"nonsense","path":"a"}]"#),
+            (r#"{"a":1}"#, r#"[{"path":"a"}]"#),
+            (r#"{"a":1}"#, r#"[{"op":"set","path":"a"}]"#),
+            (r#"{"a":1}"#, r#"[5]"#),
+            (r#"{"a":1}"#, r#"{}"#),
+            (r#"{"a":1}"#, r#"[{"op":"increment","path":"a","by":"x"}]"#),
+            (
+                r#"{"a":{"x":1}}"#,
+                r#"[{"op":"merge","path":"a","value":5}]"#,
+            ),
+            (
+                r#"{"a":9223372036854775807}"#,
+                r#"[{"op":"increment","path":"a","by":1}]"#,
+            ),
+        ];
+        for (doc, ops) in cases {
+            assert_same_outcome(
+                &format!("jsonb_apply_changeset('{doc}','{ops}')"),
+                &format!("jsonb_apply_changeset_reference('{doc}','{ops}')"),
             );
         }
     }

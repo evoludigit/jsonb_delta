@@ -13,7 +13,11 @@
 //
 // This module is a drop-in: add `mod changeset;` and `pub use changeset::*;` to lib.rs.
 
+// Used only by the serde reference function retained below as the
+// differential-test oracle, so present only in test / pg_test builds.
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::prelude::*;
+#[cfg(any(test, feature = "pg_test"))]
 use pgrx::JsonB;
 use serde_json::{Map, Value};
 
@@ -25,7 +29,7 @@ use crate::{validate_depth, value_type_name, MAX_JSONB_DEPTH};
 
 /// Maximum number of operations accepted in a single changeset (`DoS` guard: bounds the
 /// total work of one call, since the ops array is otherwise attacker-controlled).
-const MAX_CHANGESET_OPS: usize = 10_000;
+pub(crate) const MAX_CHANGESET_OPS: usize = 10_000;
 
 /// Maximum number of path segments in a single op path.
 ///
@@ -528,9 +532,20 @@ fn navigate_existing_mut<'a>(
 /// )
 /// FROM tv_feed WHERE ...;
 /// ```
+// Retained only as the differential-test oracle for the binary implementation
+// that replaced it; not built into the shipped extension.
+#[cfg(any(test, feature = "pg_test"))]
 #[allow(clippy::needless_pass_by_value)]
-#[pg_extern(immutable, parallel_safe, strict)]
-fn jsonb_apply_changeset(doc: JsonB, ops: JsonB) -> JsonB {
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_apply_changeset_reference"
+    )
+)]
+fn jsonb_apply_changeset_reference(doc: JsonB, ops: JsonB) -> JsonB {
     let mut root: Value = doc.0;
 
     let Some(ops_arr) = ops.0.as_array() else {
