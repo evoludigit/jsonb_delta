@@ -69,6 +69,20 @@ impl FromDatum for RawJsonb {
     }
 }
 
+// Reason: mirrors pgrx's own `UnboxDatum for JsonB`, which is what lets a type be
+// an array element (`Array<RawJsonb>`). The GAT carries the source datum's
+// lifetime; the conversion defers to `FromDatum`, which detoasts. `RawJsonb`
+// holds only a raw pointer, so it satisfies `Self: 'src` for any `'src`.
+unsafe impl pgrx::datum::UnboxDatum for RawJsonb {
+    type As<'src> = RawJsonb;
+    unsafe fn unbox<'src>(d: pgrx::datum::Datum<'src>) -> Self::As<'src>
+    where
+        Self: 'src,
+    {
+        RawJsonb::from_datum(d.sans_lifetime(), false).unwrap()
+    }
+}
+
 impl IntoDatum for RawJsonb {
     fn into_datum(self) -> Option<pg_sys::Datum> {
         Some(pg_sys::Datum::from(self.0))
@@ -2069,6 +2083,101 @@ fn jsonb_delta_array_update_where_path(
 }
 
 // ---------------------------------------------------------------------------
+// Multi-row array update
+//
+// Apply one keyed update to a top-level array in each of many documents, as a
+// set-returning function. Each row's work is the single-row update above, so no
+// document is round-tripped; only the changed element of each is rebuilt.
+// ---------------------------------------------------------------------------
+
+/// Apply the shared update to one document's array, or raise with the serde
+/// single-row function's exact text. Mirrors `jsonb_array_update_where_reference`:
+/// a missing key or a non-array value at the key raises rather than no-ops.
+///
+/// # Safety
+///
+/// `target` must wrap a live document; `mv` and `updates` must outlive the call.
+unsafe fn update_one_row(
+    target: &RawJsonb,
+    array_path: &str,
+    match_key: &str,
+    mv: &pg_sys::JsonbValue,
+    updates: *mut pg_sys::JsonbContainer,
+) -> RawJsonb {
+    unsafe {
+        let mut k = key_value(array_path);
+        let found =
+            pg_sys::findJsonbValueFromContainer(target.container(), pg_sys::JB_FOBJECT, &raw mut k);
+        if found.is_null() {
+            error!("Path '{}' does not exist in document", array_path);
+        }
+        let fv = *found;
+        if array_container(&fv).is_null() {
+            error!(
+                "Path '{}' does not point to an array, found: {}",
+                array_path,
+                jsonb_type_name(&fv)
+            );
+        }
+        RawJsonb(rebuild_with_array_transform(
+            target.container(),
+            array_path,
+            match_key,
+            mv,
+            &ElementAction::Merge(updates),
+            false,
+        ))
+    }
+}
+
+/// Update the first matching element of one array across many documents, without
+/// materializing any of them.
+///
+/// Behaviourally identical to `jsonb_array_update_multi_row`: `updates` must be an
+/// object (checked once), each document's first matching element is shallow-merged,
+/// and a document missing the array or holding a non-array there raises with the
+/// single-row function's text.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_array_update_multi_row(
+    targets: pgrx::Array<RawJsonb>,
+    array_path: &str,
+    match_key: &str,
+    match_value: RawJsonb,
+    updates: RawJsonb,
+) -> TableIterator<'static, (name!(result, RawJsonb),)> {
+    crate::array_ops::validate_match_key(match_key).unwrap_or_else(|e| error!("{}", e));
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    //
+    // TableIterator is a value-per-call SRF: its `next` runs across several
+    // PostgreSQL calls, and the argument datums (targets, match_value, updates)
+    // live only for the first. A lazy closure over them would dangle on the
+    // second row. So every row is computed here, on the first call, while the
+    // arguments are valid; pgrx runs this body in the multi-call memory context,
+    // so the result documents outlive the iteration. Only the finished set is
+    // handed to the iterator, which captures nothing borrowed.
+    unsafe {
+        if !is_object(&updates) {
+            error!("updates argument must be a JSONB object");
+        }
+        let mv = root_as_value(&match_value);
+        let updates_c = updates.container();
+        // NULL elements are skipped, matching `targets.iter().flatten()`.
+        let results: Vec<(RawJsonb,)> = targets
+            .iter()
+            .flatten()
+            .map(|target| {
+                (update_one_row(
+                    &target, array_path, match_key, &mv, updates_c,
+                ),)
+            })
+            .collect();
+        TableIterator::new(results)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -3088,5 +3197,99 @@ mod tests {
         .expect("SPI ok")
         .expect("not null");
         assert!(same, "binary merge disagreed with the serde implementation");
+    }
+
+    /// Multi-row update: the whole result set must agree with the serde original,
+    /// row order included, across duplicates, no-match rows, skipped NULL
+    /// elements, an empty input, and a text match key.
+    #[pg_test]
+    fn multi_row_matches_serde() {
+        // (targets_sql, array_key, match_key, match_value, updates)
+        let cases = [
+            (
+                r#"ARRAY['{"p":[{"id":1,"n":"a"}]}','{"p":[{"id":1,"n":"b"},{"id":2}]}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            // duplicate matches in one document: only the first changes
+            (
+                r#"ARRAY['{"p":[{"id":1},{"id":1}]}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            // a no-match document is returned unchanged
+            (
+                r#"ARRAY['{"p":[{"id":5}]}','{"p":[{"id":1}]}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            // NULL elements are skipped
+            (
+                r#"ARRAY['{"p":[{"id":1}]}',NULL,'{"p":[{"id":1}]}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            // empty input
+            (r#"ARRAY[]::jsonb[]"#, "p", "id", "1", r#"{"x":9}"#),
+            // text match key
+            (
+                r#"ARRAY['{"p":[{"id":"a"},{"id":"b"}]}']::jsonb[]"#,
+                "p",
+                "id",
+                r#""b""#,
+                r#"{"x":9}"#,
+            ),
+        ];
+        for (tg, ak, mk, mv, up) in cases {
+            assert_same_outcome(
+                &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row({tg},'{ak}','{mk}','{mv}','{up}'))"),
+                &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row_reference({tg},'{ak}','{mk}','{mv}','{up}'))"),
+            );
+        }
+    }
+
+    /// The upfront errors (bad match key, non-object updates) and the per-row
+    /// errors (a document missing the array, or holding a non-array there) all
+    /// raise identically.
+    #[pg_test]
+    fn multi_row_errors_match_serde() {
+        let cases = [
+            (
+                r#"ARRAY['{"p":[{"id":1}]}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"5"#,
+            ),
+            (
+                r#"ARRAY['{"p":[{"id":1}]}']::jsonb[]"#,
+                "p",
+                "",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            (
+                r#"ARRAY['{"p":[{"id":1}]}','{"q":1}']::jsonb[]"#,
+                "p",
+                "id",
+                "1",
+                r#"{"x":9}"#,
+            ),
+            (r#"ARRAY['{"p":5}']::jsonb[]"#, "p", "id", "1", r#"{"x":9}"#),
+        ];
+        for (tg, ak, mk, mv, up) in cases {
+            assert_same_outcome(
+                &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row({tg},'{ak}','{mk}','{mv}','{up}'))"),
+                &format!("(SELECT array_agg(result) FROM jsonb_array_update_multi_row_reference({tg},'{ak}','{mk}','{mv}','{up}'))"),
+            );
+        }
     }
 }

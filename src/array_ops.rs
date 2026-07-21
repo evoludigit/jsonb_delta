@@ -268,8 +268,16 @@ pub fn jsonb_array_update_where_batch_reference(
 /// ```
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::needless_collect)]
-#[pg_extern(immutable, parallel_safe, strict)]
-pub fn jsonb_array_update_multi_row(
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(
+        immutable,
+        parallel_safe,
+        strict,
+        name = "jsonb_array_update_multi_row_reference"
+    )
+)]
+pub fn jsonb_array_update_multi_row_reference(
     targets: pgrx::Array<JsonB>,
     array_path: &str,
     match_key: &str,
