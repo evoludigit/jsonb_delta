@@ -1231,6 +1231,344 @@ fn jsonb_deep_merge(target: RawJsonb, source: RawJsonb) -> RawJsonb {
 }
 
 // ---------------------------------------------------------------------------
+// Ordered array insert
+//
+// Insert one element into a top-level array, either appended or placed to keep
+// the array sorted by a field. Non-matching keys of the document, and every
+// element the insert does not sit between, pass through as binary values -- so
+// the whole array is not decoded, only walked.
+// ---------------------------------------------------------------------------
+
+/// Total-ordering rank of a jsonb value's type, mirroring `crate::compare_values`:
+/// null < bool < number < string < (array/object, which compare equal).
+fn jbv_rank(t: pg_sys::jbvType::Type) -> u8 {
+    match t {
+        pg_sys::jbvType::jbvNull => 0,
+        pg_sys::jbvType::jbvBool => 1,
+        pg_sys::jbvType::jbvNumeric => 2,
+        pg_sys::jbvType::jbvString => 3,
+        _ => 4,
+    }
+}
+
+/// Order two jsonb values exactly as `crate::compare_values` orders their serde
+/// equivalents: by type rank first, then within a type. Numbers compare by
+/// value through `AnyNumeric` (PostgreSQL's own numeric comparison), which for
+/// the integer and string sort keys these functions actually use gives the same
+/// order as serde's integer-then-float path; containers compare equal.
+///
+/// # Safety
+///
+/// Both must be initialized `JsonbValue`s whose payloads outlive the call.
+unsafe fn binary_compare(a: &pg_sys::JsonbValue, b: &pg_sys::JsonbValue) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (ra, rb) = (jbv_rank(a.type_), jbv_rank(b.type_));
+    if ra != rb {
+        return ra.cmp(&rb);
+    }
+    unsafe {
+        match a.type_ {
+            pg_sys::jbvType::jbvBool => a.val.boolean.cmp(&b.val.boolean),
+            pg_sys::jbvType::jbvNumeric => {
+                let an = pgrx::AnyNumeric::from_datum(pg_sys::Datum::from(a.val.numeric), false);
+                let bn = pgrx::AnyNumeric::from_datum(pg_sys::Datum::from(b.val.numeric), false);
+                match (an, bn) {
+                    (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+                    _ => Ordering::Equal,
+                }
+            }
+            pg_sys::jbvType::jbvString => {
+                let na = usize::try_from(a.val.string.len).unwrap_or(0);
+                let nb = usize::try_from(b.val.string.len).unwrap_or(0);
+                let sa = std::slice::from_raw_parts(a.val.string.val.cast::<u8>(), na);
+                let sb = std::slice::from_raw_parts(b.val.string.val.cast::<u8>(), nb);
+                sa.cmp(sb)
+            }
+            // Both null, or both containers: equal, as compare_values has it.
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+/// The value of object field `key` in `elem`, or `None` when `elem` is not an
+/// object or lacks the key -- matching serde's `elem.get(key)`.
+///
+/// # Safety
+///
+/// `elem`'s payload must outlive the call.
+unsafe fn field_of(elem: &pg_sys::JsonbValue, key: &str) -> Option<pg_sys::JsonbValue> {
+    unsafe {
+        let c = object_container(elem);
+        if c.is_null() {
+            return None;
+        }
+        let mut k = key_value(key);
+        let found = pg_sys::findJsonbValueFromContainer(c, pg_sys::JB_FOBJECT, &raw mut k);
+        if found.is_null() {
+            None
+        } else {
+            Some(*found)
+        }
+    }
+}
+
+/// Insertion index keeping `elements` sorted by `sort_key`, mirroring
+/// `crate::find_insertion_point`: a `partition_point` over the same predicate,
+/// so the position is identical for a sorted input and identically arbitrary for
+/// an unsorted one. An element without the key sorts before keyed ones.
+///
+/// # Safety
+///
+/// Every value referenced must outlive the call.
+unsafe fn insertion_point(
+    elements: &[pg_sys::JsonbValue],
+    new_val: &pg_sys::JsonbValue,
+    sort_key: &str,
+    is_asc: bool,
+) -> usize {
+    use std::cmp::Ordering;
+    elements.partition_point(|elem| unsafe {
+        match field_of(elem, sort_key) {
+            None => true, // keyless elements sort before keyed ones
+            Some(ev) => {
+                let ord = binary_compare(&ev, new_val);
+                if is_asc {
+                    ord == Ordering::Less
+                } else {
+                    ord == Ordering::Greater
+                }
+            }
+        }
+    })
+}
+
+/// Push an array as `elements` with `new_elem` inserted at `pos` (before the
+/// element currently there); `pos == elements.len()` appends.
+///
+/// # Safety
+///
+/// Every pointer must outlive the call.
+unsafe fn push_array_with_insert(
+    elements: &[pg_sys::JsonbValue],
+    new_elem: &pg_sys::JsonbValue,
+    pos: usize,
+    state: *mut *mut pg_sys::JsonbParseState,
+) {
+    unsafe {
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+            std::ptr::null_mut(),
+        );
+        for (j, e) in elements.iter().enumerate() {
+            if j == pos {
+                let mut ne = *new_elem;
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ne);
+            }
+            let mut ev = *e;
+            pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ev);
+        }
+        if pos >= elements.len() {
+            let mut ne = *new_elem;
+            pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ne);
+        }
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+            std::ptr::null_mut(),
+        );
+    }
+}
+
+/// Collect an array container's elements into a `Vec`, each borrowing into the
+/// source. Bounded by `MAX_JSONB_ARRAY_SIZE`, so the allocation is bounded.
+///
+/// # Safety
+///
+/// `array` must be a valid jsonb array container outliving the returned values.
+unsafe fn collect_elements(array: *mut pg_sys::JsonbContainer) -> Vec<pg_sys::JsonbValue> {
+    unsafe {
+        let mut out = Vec::new();
+        let mut it = pg_sys::JsonbIteratorInit(array);
+        let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut ev, true);
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut ev, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                break;
+            }
+            out.push(ev);
+        }
+        out
+    }
+}
+
+/// Insert `new_element` into the array at top-level key `array_path`, ordered by
+/// `sort_key` if given (else appended), without materializing the document.
+///
+/// Behaviourally identical to `jsonb_array_insert_where`: the array is created if
+/// the key is absent, a non-object target and a non-array value at the key each
+/// raise, and the ordering is the same `partition_point` placement.
+// Reason: `#[pg_extern]` requires owned arguments, as above. Deliberately NOT
+// strict, matching the serde original -- sort_key / sort_order are optional.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe)]
+fn jsonb_array_insert_where(
+    target: RawJsonb,
+    array_path: &str,
+    new_element: RawJsonb,
+    sort_key: Option<&str>,
+    sort_order: Option<&str>,
+) -> RawJsonb {
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        if !is_object(&target) {
+            let t = root_as_value(&target);
+            error!(
+                "target must be a JSONB object, got: {}",
+                jsonb_type_name(&t)
+            );
+        }
+        let new_elem = root_as_value(&new_element);
+
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+
+        let mut it = pg_sys::JsonbIteratorInit(target.container());
+        let mut key = std::mem::zeroed::<pg_sys::JsonbValue>();
+        let mut val = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+
+        let mut found = false;
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            let is_target = key.type_ == pg_sys::jbvType::jbvString
+                && usize::try_from(key.val.string.len).unwrap_or(0) == array_path.len()
+                && std::slice::from_raw_parts(key.val.string.val.cast::<u8>(), array_path.len())
+                    == array_path.as_bytes();
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut val, true);
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_KEY,
+                &raw mut key,
+            );
+
+            if !is_target {
+                pg_sys::pushJsonbValue(
+                    &raw mut state,
+                    pg_sys::JsonbIteratorToken::WJB_VALUE,
+                    &raw mut val,
+                );
+                continue;
+            }
+            found = true;
+            if val.type_ != pg_sys::jbvType::jbvBinary
+                || (*val.val.binary.data).header & pg_sys::JB_FARRAY == 0
+            {
+                error!(
+                    "path '{}' must point to an array or not exist, got: {}",
+                    array_path,
+                    jsonb_type_name(&val)
+                );
+            }
+            insert_into_array(
+                val.val.binary.data,
+                &new_elem,
+                sort_key,
+                sort_order,
+                &raw mut state,
+            );
+        }
+
+        if !found {
+            // Absent key: create the array holding just the new element.
+            let mut k = key_value(array_path);
+            pg_sys::pushJsonbValue(
+                &raw mut state,
+                pg_sys::JsonbIteratorToken::WJB_KEY,
+                &raw mut k,
+            );
+            push_array_with_insert(&[], &new_elem, 0, &raw mut state);
+        }
+
+        let result = pg_sys::pushJsonbValue(
+            &raw mut state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        );
+        RawJsonb(pg_sys::JsonbValueToJsonb(result))
+    }
+}
+
+/// Push the array at `array` with `new_elem` inserted, ordered per `sort_key` /
+/// `sort_order`. Appends when there is no sort key or the new element carries no
+/// value for it, matching `find_insertion_point`.
+///
+/// # Safety
+///
+/// `array` must be a valid jsonb array container; every pointer must outlive it.
+unsafe fn insert_into_array(
+    array: *mut pg_sys::JsonbContainer,
+    new_elem: &pg_sys::JsonbValue,
+    sort_key: Option<&str>,
+    sort_order: Option<&str>,
+    state: *mut *mut pg_sys::JsonbParseState,
+) {
+    unsafe {
+        // Append path: no sort key, or the new element has no value at it.
+        let sorted_pos = match sort_key {
+            Some(sk) => field_of(new_elem, sk).map(|nv| {
+                let is_asc = sort_order.unwrap_or("ASC").eq_ignore_ascii_case("ASC");
+                let elements = collect_elements(array);
+                let pos = insertion_point(&elements, &nv, sk, is_asc);
+                (elements, pos)
+            }),
+            None => None,
+        };
+
+        match sorted_pos {
+            Some((elements, pos)) => push_array_with_insert(&elements, new_elem, pos, state),
+            None => {
+                // Append: stream existing elements through, then the new one.
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_BEGIN_ARRAY,
+                    std::ptr::null_mut(),
+                );
+                let mut ait = pg_sys::JsonbIteratorInit(array);
+                let mut ev = std::mem::zeroed::<pg_sys::JsonbValue>();
+                pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                loop {
+                    let tok = pg_sys::JsonbIteratorNext(&raw mut ait, &raw mut ev, true);
+                    if tok != pg_sys::JsonbIteratorToken::WJB_ELEM {
+                        break;
+                    }
+                    pg_sys::pushJsonbValue(
+                        state,
+                        pg_sys::JsonbIteratorToken::WJB_ELEM,
+                        &raw mut ev,
+                    );
+                }
+                let mut ne = *new_elem;
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_ELEM, &raw mut ne);
+                pg_sys::pushJsonbValue(
+                    state,
+                    pg_sys::JsonbIteratorToken::WJB_END_ARRAY,
+                    std::ptr::null_mut(),
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -1833,6 +2171,132 @@ mod tests {
             ok,
             "binary deep merge should handle depth serde cannot parse"
         );
+    }
+
+    /// Array insert across appends, array creation, and ordered insertion by
+    /// integer / string / decimal keys -- including the placements that expose
+    /// an off-by-one (front, back, between, equal, keyless).
+    #[pg_test]
+    fn array_insert_matches_serde() {
+        // (target, array_path, element, sort_key_sql, sort_order_sql)
+        let cases = [
+            // append (no sort key)
+            (
+                r#"{"p":[{"id":1},{"id":2}]}"#,
+                "p",
+                r#"{"id":3}"#,
+                "NULL",
+                "NULL",
+            ),
+            (r#"{"p":[]}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
+            // create the array when the key is absent
+            (r#"{}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
+            (r#"{"a":1,"b":[9]}"#, "p", r#"{"id":1}"#, "NULL", "NULL"),
+            // append a scalar element
+            (r#"{"p":[1,2]}"#, "p", r#"3"#, "NULL", "NULL"),
+            // ordered insert by integer id: between, front, back, equal
+            (
+                r#"{"p":[{"id":1},{"id":3},{"id":5}]}"#,
+                "p",
+                r#"{"id":4}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            (
+                r#"{"p":[{"id":2},{"id":4}]}"#,
+                "p",
+                r#"{"id":1}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            (
+                r#"{"p":[{"id":2},{"id":4}]}"#,
+                "p",
+                r#"{"id":9}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            (
+                r#"{"p":[{"id":2},{"id":4}]}"#,
+                "p",
+                r#"{"id":4}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            // descending
+            (
+                r#"{"p":[{"id":5},{"id":3},{"id":1}]}"#,
+                "p",
+                r#"{"id":4}"#,
+                "'id'",
+                "'DESC'",
+            ),
+            // string sort key (timestamps), and the NULL sort_order default (ASC)
+            (
+                r#"{"p":[{"c":"2025-01-01"},{"c":"2025-01-03"}]}"#,
+                "p",
+                r#"{"c":"2025-01-02"}"#,
+                "'c'",
+                "'ASC'",
+            ),
+            (
+                r#"{"p":[{"id":1},{"id":3}]}"#,
+                "p",
+                r#"{"id":2}"#,
+                "'id'",
+                "NULL",
+            ),
+            // decimal sort key -- AnyNumeric orders these the same as serde's f64
+            (
+                r#"{"p":[{"id":1.5},{"id":3.5}]}"#,
+                "p",
+                r#"{"id":2.5}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            // new element lacks the sort key -> append
+            (
+                r#"{"p":[{"id":1},{"id":3}]}"#,
+                "p",
+                r#"{"x":9}"#,
+                "'id'",
+                "'ASC'",
+            ),
+            // an existing element lacks the sort key -> it sorts before keyed ones
+            (
+                r#"{"p":[{"x":0},{"id":3}]}"#,
+                "p",
+                r#"{"id":2}"#,
+                "'id'",
+                "'ASC'",
+            ),
+        ];
+        for (t, path, e, sk, so) in cases {
+            assert_matches_serde(
+                &format!("jsonb_array_insert_where('{t}','{path}','{e}',{sk},{so})"),
+                &format!("jsonb_array_insert_where_reference('{t}','{path}','{e}',{sk},{so})"),
+            );
+        }
+    }
+
+    /// The two failure modes (non-object target, non-array value at the key)
+    /// raise identical text to the serde original, across value types.
+    #[pg_test]
+    fn array_insert_errors_match_serde() {
+        let cases = [
+            (r#"[1,2]"#, "p", r#"{"id":1}"#),
+            (r#"5"#, "p", r#"{"id":1}"#),
+            (r#""s""#, "p", r#"{"id":1}"#),
+            (r#"{"p":5}"#, "p", r#"{"id":1}"#),
+            (r#"{"p":{"x":1}}"#, "p", r#"{"id":1}"#),
+            (r#"{"p":"str"}"#, "p", r#"{"id":1}"#),
+        ];
+        for (t, path, e) in cases {
+            assert_same_outcome(
+                &format!("jsonb_array_insert_where('{t}','{path}','{e}',NULL,NULL)"),
+                &format!("jsonb_array_insert_where_reference('{t}','{path}','{e}',NULL,NULL)"),
+            );
+        }
     }
 
     #[pg_test]

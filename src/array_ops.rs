@@ -457,8 +457,11 @@ pub fn jsonb_array_delete_where_reference(
 /// )
 /// WHERE fk_user = NEW.fk_author;
 /// ```
-#[pg_extern(immutable, parallel_safe)]
-pub fn jsonb_array_insert_where(
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(immutable, parallel_safe, name = "jsonb_array_insert_where_reference")
+)]
+pub fn jsonb_array_insert_where_reference(
     target: JsonB,
     array_path: &str,
     new_element: JsonB,
