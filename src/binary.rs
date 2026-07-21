@@ -1068,6 +1068,169 @@ fn jsonb_smart_patch_nested(
 }
 
 // ---------------------------------------------------------------------------
+// Deep (recursive) merge
+//
+// Unlike the shallow merge -- where a nested object on either side is handed
+// through as an opaque binary value -- deep merge descends into keys present in
+// BOTH documents as objects and merges them recursively. Every other key is
+// copied wholesale (present on one side only) or replaced (source wins), so
+// only the overlapping object spine is walked; disjoint subtrees still pass
+// through as binary pointers and are never decoded.
+// ---------------------------------------------------------------------------
+
+/// Whether `v` nests no deeper than `max`, bailing as soon as it does not.
+///
+/// Mirrors `crate::validate_depth`: a scalar or empty container is depth 0, and
+/// each level of nesting that holds a value adds one. Object keys are strings,
+/// so only values are descended -- exactly what `validate_depth` does with
+/// `map.values()`. Returns `false` at the first scalar found at level `max + 1`,
+/// which is the point where `validate_depth` raises, so the reported depth is
+/// always `max + 1` regardless of how much deeper the document goes.
+///
+/// # Safety
+///
+/// `v` must be an initialized `JsonbValue` whose payload outlives the call.
+unsafe fn depth_within(v: &pg_sys::JsonbValue, current: usize, max: usize) -> bool {
+    unsafe {
+        if current > max {
+            return false;
+        }
+        if v.type_ != pg_sys::jbvType::jbvBinary {
+            return true; // a scalar sits at `current`, which is <= max here
+        }
+        let mut it = pg_sys::JsonbIteratorInit(v.val.binary.data);
+        let mut child = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut child, true);
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut child, true);
+            match tok {
+                // An object key: the value follows and is the thing to descend.
+                pg_sys::JsonbIteratorToken::WJB_KEY => {
+                    pg_sys::JsonbIteratorNext(&raw mut it, &raw mut child, true);
+                    if !depth_within(&child, current + 1, max) {
+                        return false;
+                    }
+                }
+                pg_sys::JsonbIteratorToken::WJB_ELEM => {
+                    if !depth_within(&child, current + 1, max) {
+                        return false;
+                    }
+                }
+                _ => return true, // WJB_END_OBJECT / WJB_END_ARRAY
+            }
+        }
+    }
+}
+
+/// Push the deep merge of two object containers as a single object value.
+///
+/// Keys present in both, whose values are both objects, are merged recursively;
+/// every other key is copied (present on one side only) or replaced (source
+/// wins). Returns the value produced by the closing `WJB_END_OBJECT`, so the
+/// top-level caller can hand it to `JsonbValueToJsonb`.
+///
+/// # Safety
+///
+/// Both containers must be valid jsonb object containers outliving the call.
+unsafe fn push_deep_merged(
+    target: *mut pg_sys::JsonbContainer,
+    source: *mut pg_sys::JsonbContainer,
+    state: *mut *mut pg_sys::JsonbParseState,
+) -> *mut pg_sys::JsonbValue {
+    unsafe {
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_BEGIN_OBJECT,
+            std::ptr::null_mut(),
+        );
+
+        // Pass 1: every target key, in target order. If source carries the same
+        // key, merge (both objects) or replace (source wins); else copy it.
+        let mut it = pg_sys::JsonbIteratorInit(target);
+        let mut key = std::mem::zeroed::<pg_sys::JsonbValue>();
+        let mut tv = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut it, &raw mut key, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            pg_sys::JsonbIteratorNext(&raw mut it, &raw mut tv, true);
+
+            pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_KEY, &raw mut key);
+            // `findJsonbValueFromContainer` reads the key for comparison only and
+            // does not mutate it, so reusing `key` after the push above is sound.
+            let sv = pg_sys::findJsonbValueFromContainer(source, pg_sys::JB_FOBJECT, &raw mut key);
+            if sv.is_null() {
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_VALUE, &raw mut tv);
+                continue;
+            }
+            let t_obj = object_container(&tv);
+            let s_obj = object_container(&*sv);
+            if !t_obj.is_null() && !s_obj.is_null() {
+                push_deep_merged(t_obj, s_obj, state);
+            } else {
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_VALUE, sv);
+            }
+        }
+
+        // Pass 2: source keys absent from target, in source order.
+        let mut sit = pg_sys::JsonbIteratorInit(source);
+        let mut skey = std::mem::zeroed::<pg_sys::JsonbValue>();
+        let mut sval = std::mem::zeroed::<pg_sys::JsonbValue>();
+        pg_sys::JsonbIteratorNext(&raw mut sit, &raw mut skey, true);
+        loop {
+            let tok = pg_sys::JsonbIteratorNext(&raw mut sit, &raw mut skey, true);
+            if tok != pg_sys::JsonbIteratorToken::WJB_KEY {
+                break;
+            }
+            pg_sys::JsonbIteratorNext(&raw mut sit, &raw mut sval, true);
+            let found =
+                pg_sys::findJsonbValueFromContainer(target, pg_sys::JB_FOBJECT, &raw mut skey);
+            if found.is_null() {
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_KEY, &raw mut skey);
+                pg_sys::pushJsonbValue(state, pg_sys::JsonbIteratorToken::WJB_VALUE, &raw mut sval);
+            }
+        }
+
+        pg_sys::pushJsonbValue(
+            state,
+            pg_sys::JsonbIteratorToken::WJB_END_OBJECT,
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+/// Recursively merge `source` into `target`, descending into shared object keys.
+///
+/// Behaviourally identical to `jsonb_deep_merge`: `source` depth is validated
+/// first (so a too-deep source raises even when `target` is not an object), and
+/// when either operand is not an object the result is `source`, unchanged.
+// Reason: `#[pg_extern]` requires owned arguments, as above.
+#[allow(clippy::needless_pass_by_value)]
+#[pg_extern(immutable, parallel_safe, strict)]
+fn jsonb_deep_merge(target: RawJsonb, source: RawJsonb) -> RawJsonb {
+    // Reason: pointers come from detoasted datums and the palloc'ing builder.
+    unsafe {
+        let sroot = root_as_value(&source);
+        if !depth_within(&sroot, 0, crate::MAX_JSONB_DEPTH) {
+            error!(
+                "JSONB nesting too deep (max {}, found depth {})",
+                crate::MAX_JSONB_DEPTH,
+                crate::MAX_JSONB_DEPTH + 1
+            );
+        }
+        // deep_merge_recursive replaces with `source` unless BOTH are objects.
+        if !is_object(&target) || !is_object(&source) {
+            return source;
+        }
+        let mut state: *mut pg_sys::JsonbParseState = std::ptr::null_mut();
+        let built = push_deep_merged(target.container(), source.container(), &raw mut state);
+        RawJsonb(pg_sys::JsonbValueToJsonb(built))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Read-only probes
 //
 // These never rebuild anything, so they shed the *entire* round trip rather than
@@ -1580,6 +1743,95 @@ mod tests {
         assert_same_outcome(
             r#"jsonb_smart_patch_nested('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
             r#"jsonb_smart_patch_nested_reference('{"u":{"c":{"n":"A","city":"NY"}}}','{"n":"B"}',ARRAY['u','c'])"#,
+        );
+    }
+
+    /// Deep merge across the cases that distinguish it from a shallow merge:
+    /// shared object keys recurse, everything else is copied or replaced, and a
+    /// non-object operand makes `source` win outright.
+    #[pg_test]
+    fn deep_merge_matches_serde() {
+        let cases = [
+            // disjoint keys
+            (r#"{"a":1}"#, r#"{"b":2}"#),
+            // overlapping scalar: source replaces
+            (r#"{"a":1,"b":2}"#, r#"{"b":9}"#),
+            // the recursion that shallow merge cannot do: "likes" must survive
+            (
+                r#"{"author":{"name":"A","stats":{"posts":10,"likes":5}}}"#,
+                r#"{"author":{"stats":{"posts":11}}}"#,
+            ),
+            // object replaced by scalar, and the reverse
+            (r#"{"a":{"x":1}}"#, r#"{"a":5}"#),
+            (r#"{"a":5}"#, r#"{"a":{"x":1}}"#),
+            // object vs array, and arrays are replaced not merged
+            (r#"{"a":{"x":1}}"#, r#"{"a":[1,2]}"#),
+            (r#"{"a":[1,2]}"#, r#"{"a":[3]}"#),
+            // source-only key carrying a nested object through untouched
+            (r#"{"a":1}"#, r#"{"b":{"c":2}}"#),
+            // three levels of shared-object recursion
+            (
+                r#"{"a":{"b":{"c":1,"d":2}}}"#,
+                r#"{"a":{"b":{"c":9,"e":3}}}"#,
+            ),
+            // empty operands
+            (r#"{}"#, r#"{"a":1}"#),
+            (r#"{"a":1}"#, r#"{}"#),
+            (r#"{}"#, r#"{}"#),
+            // non-ascii keys, with a recursion on one of them
+            (
+                r#"{"café":1,"日本":{"x":1}}"#,
+                r#"{"café":2,"日本":{"y":2}}"#,
+            ),
+            // neither, or one, operand is an object: source wins wholesale
+            (r#"5"#, r#"{"a":1}"#),
+            (r#"[1,2]"#, r#"{"a":1}"#),
+            (r#"{"a":1}"#, r#"5"#),
+            (r#"{"a":1}"#, r#"[1,2]"#),
+            (r#"5"#, r#"7"#),
+        ];
+        for (t, s) in cases {
+            assert_matches_serde(
+                &format!("jsonb_deep_merge('{t}','{s}')"),
+                &format!("jsonb_deep_merge_reference('{t}','{s}')"),
+            );
+        }
+    }
+
+    /// The binary version is the first to actually enforce the documented
+    /// 1000-level depth cap. The serde original cannot reach its own guard: the
+    /// argument is parsed through pgrx's `JsonB`, whose `serde_json` parse trips
+    /// its ~128-level recursion limit ("recursion limit exceeded") long before
+    /// `validate_depth` runs. Walking the binary form has no such parse limit,
+    /// so the cap here is both the documented contract and the bound that keeps
+    /// `push_deep_merged`'s recursion off the backend stack. A deliberate,
+    /// pinned divergence, in the spirit of the numeric-scale ones above.
+    #[pg_test]
+    fn deep_merge_enforces_documented_depth_limit() {
+        let out = outcome(
+            r#"jsonb_deep_merge('{}',(repeat('{"a":',1001)||'1'||repeat('}',1001))::jsonb)"#,
+        );
+        assert_eq!(
+            out,
+            "ERROR: JSONB nesting too deep (max 1000, found depth 1001)"
+        );
+    }
+
+    /// The flip side of the divergence: a 300-level document is past serde's
+    /// parse limit but within the 1000-level cap, so the serde original errors
+    /// where the binary version merges. `deep_merge(a, a) == a` for any all-object
+    /// document, which is what the recursion must produce.
+    #[pg_test]
+    fn deep_merge_handles_depth_serde_cannot_parse() {
+        let ok = Spi::get_one::<bool>(
+            r#"WITH a(v) AS (SELECT (repeat('{"a":',300)||'1'||repeat('}',300))::jsonb)
+               SELECT jsonb_deep_merge(v, v) = v FROM a"#,
+        )
+        .expect("SPI ok")
+        .expect("not null");
+        assert!(
+            ok,
+            "binary deep merge should handle depth serde cannot parse"
         );
     }
 

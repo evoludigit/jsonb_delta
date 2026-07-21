@@ -432,9 +432,12 @@ pub fn jsonb_smart_patch_array_reference(
 /// )
 /// WHERE data->>'company_id' = '123';
 /// ```
-#[pg_extern(immutable, parallel_safe, strict)]
+#[cfg_attr(
+    any(test, feature = "pg_test"),
+    pg_extern(immutable, parallel_safe, strict, name = "jsonb_deep_merge_reference")
+)]
 #[must_use]
-pub fn jsonb_deep_merge(target: JsonB, source: JsonB) -> JsonB {
+pub fn jsonb_deep_merge_reference(target: JsonB, source: JsonB) -> JsonB {
     let target_val = target.0;
     let source_val = source.0;
 
