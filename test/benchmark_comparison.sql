@@ -10,7 +10,7 @@
 --
 -- Run with: psql -d your_db -f test/benchmark_comparison.sql
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 \echo '========================================='
 \echo 'Performance Comparison Benchmark'

@@ -470,6 +470,6 @@ Time: 3.634 ms
 ---
 
 **Benchmark Date**: 2025-12-08
-**Extension Version**: jsonb_ivm v0.2.0
+**Extension Version**: jsonb_delta v0.2.0
 **PostgreSQL**: 17.7
 **pgrx**: 0.12.8

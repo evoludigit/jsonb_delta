@@ -17,7 +17,7 @@ pgrx successfully detects custom Rust functions during compilation (shows "3 SQL
 - **PostgreSQL version**: 17.7 (pgrx-managed)
 - **Rust version**: stable-x86_64-unknown-linux-gnu
 - **OS**: Linux (Ubuntu/Debian-based)
-- **Project**: jsonb_ivm extension
+- **Project**: jsonb_delta extension
 
 ## Affected Functions
 
@@ -97,7 +97,7 @@ fn jsonb_merge_at_path(
 
 **Expected** (if working):
 ```sql
--- jsonb_ivm extension version 0.1.0
+-- jsonb_delta extension version 0.1.0
 
 CREATE FUNCTION jsonb_merge_shallow(target jsonb, source jsonb)
 RETURNS jsonb IMMUTABLE STRICT PARALLEL SAFE LANGUAGE c
@@ -114,7 +114,7 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_at_path_wrapper';
 
 **Actual** (current):
 ```sql
--- jsonb_ivm extension version 0.1.0
+-- jsonb_delta extension version 0.1.0
 
 CREATE FUNCTION jsonb_merge_shallow(target jsonb, source jsonb)
 RETURNS jsonb IMMUTABLE STRICT PARALLEL SAFE LANGUAGE c
@@ -126,7 +126,7 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_shallow_wrapper';
 1. **Clone and setup project**:
    ```bash
    git clone <repo>
-   cd jsonb_ivm
+   cd jsonb_delta
    cargo pgrx init --pg17
    ```
 
@@ -142,7 +142,7 @@ AS 'MODULE_PATHNAME', 'jsonb_merge_shallow_wrapper';
 
 4. **Check generated SQL** (only 1 function):
    ```bash
-   cat ~/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_ivm--0.1.0.sql
+   cat ~/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_delta--0.1.0.sql
    ```
 
 5. **Try to call missing functions** (should fail):
@@ -178,7 +178,7 @@ All detected functions should generate corresponding `CREATE FUNCTION` statement
 ## Files to Examine
 
 - `src/lib.rs` - Function definitions
-- `~/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_ivm--0.1.0.sql` - Generated SQL
+- `~/.pgrx/17.7/pgrx-install/share/postgresql/extension/jsonb_delta--0.1.0.sql` - Generated SQL
 - `Cargo.toml` - Dependencies and features
 - pgrx source code (if accessible) - SQL generation logic
 

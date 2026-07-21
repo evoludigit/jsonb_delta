@@ -1,5 +1,5 @@
 [package]
-name = "jsonb_ivm-fuzz"
+name = "jsonb_delta-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"

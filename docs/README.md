@@ -1,6 +1,6 @@
-# jsonb_ivm Documentation
+# jsonb_delta Documentation
 
-Welcome to the jsonb_ivm documentation. This directory contains comprehensive guides for using, integrating, and understanding the extension.
+Welcome to the jsonb_delta documentation. This directory contains comprehensive guides for using, integrating, and understanding the extension.
 
 ## Quick Links
 

@@ -1,7 +1,7 @@
-# Trivy Vulnerability Exceptions for jsonb_ivm
+# Trivy Vulnerability Exceptions for jsonb_delta
 #
 # This file documents security vulnerabilities that are accepted risks
-# or false positives for jsonb_ivm deployment. Each exception includes
+# or false positives for jsonb_delta deployment. Each exception includes
 # risk assessment and mitigation strategy aligned with:
 #
 # - 🇺🇸 US: NIST 800-53, FedRAMP Moderate, HIPAA
@@ -25,7 +25,7 @@
 # =============================================================================
 #
 # This file documents security vulnerabilities that are accepted risks
-# for jsonb_ivm deployment. Each exception includes risk assessment and
+# for jsonb_delta deployment. Each exception includes risk assessment and
 # mitigation strategy aligned with international compliance standards.
 #
 # Defense-in-Depth Layers:
@@ -77,7 +77,7 @@
 
 # CVE-2025-7458: SQLite integer overflow
 # Reason: libsqlite3-0 is included in postgres base image but:
-#   - Not directly used by jsonb_ivm extension
+#   - Not directly used by jsonb_delta extension
 #   - PostgreSQL uses its own storage engine, not SQLite
 #   - No SQL execution path from extension to SQLite
 #   - Exploitation requires attacker-controlled SELECT with large ORDER BY

@@ -1,6 +1,6 @@
 # Architecture
 
-Technical architecture and design decisions for jsonb_ivm.
+Technical architecture and design decisions for jsonb_delta.
 
 ---
 
@@ -16,7 +16,7 @@ Technical architecture and design decisions for jsonb_ivm.
 
 ## System Overview
 
-jsonb_ivm is a PostgreSQL extension that provides **surgical JSONB manipulation** for incremental view maintenance in CQRS architectures.
+jsonb_delta is a PostgreSQL extension that provides **surgical JSONB manipulation** for incremental view maintenance in CQRS architectures.
 
 ### Problem Statement
 
@@ -353,9 +353,9 @@ fn deep_merge(target, source):
 
 5. Update README.md API reference
 
-6. Regenerate SQL: `cargo pgrx schema > sql/jsonb_ivm--X.Y.Z.sql`
+6. Regenerate SQL: `cargo pgrx schema > sql/jsonb_delta--X.Y.Z.sql`
 
-7. Create upgrade path: `sql/jsonb_ivm--old--new.sql`
+7. Create upgrade path: `sql/jsonb_delta--old--new.sql`
 
 ---
 

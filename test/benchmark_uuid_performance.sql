@@ -4,7 +4,7 @@
 \timing on
 \set ON_ERROR_STOP on
 
-CREATE EXTENSION IF NOT EXISTS jsonb_ivm;
+CREATE EXTENSION IF NOT EXISTS jsonb_delta;
 
 \echo '========================================'
 \echo 'BENCHMARK: UUID vs Integer ID Performance'

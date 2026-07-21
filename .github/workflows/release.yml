@@ -57,8 +57,8 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jsonb_ivm-pg${{ matrix.pg-version }}
-          path: target/release/jsonb_ivm-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz
+          name: jsonb_delta-pg${{ matrix.pg-version }}
+          path: target/release/jsonb_delta-${{ github.ref_name }}-pg${{ matrix.pg-version }}.tar.gz
 
   generate-changelog:
     name: Generate Changelog

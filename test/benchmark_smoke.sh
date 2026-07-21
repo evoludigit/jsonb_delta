@@ -2,7 +2,7 @@
 # Smoke test: every benchmark script must run to completion against a clean database.
 #
 # This asserts exit status only, never timing — it exists so the benchmark suite
-# cannot silently rot again (it was unrunnable from the jsonb_ivm rename until the
+# cannot silently rot again (it was unrunnable from the extension rename until the
 # repair, which is why no benchmark artifact in the repo postdates it).
 #
 # Usage: test/benchmark_smoke.sh [dbname]

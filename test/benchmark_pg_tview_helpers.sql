@@ -1,5 +1,5 @@
 -- ===================================================================
--- jsonb_ivm v0.3.0 - pg_tview Helpers Benchmark Suite
+-- jsonb_delta v0.3.0 - pg_tview Helpers Benchmark Suite
 -- ===================================================================
 
 \timing on
