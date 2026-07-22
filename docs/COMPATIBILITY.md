@@ -4,12 +4,17 @@
 
 | PostgreSQL | jsonb_delta | Status | Notes |
 |------------|-----------|--------|-------|
-| 13.x       | 0.1.0+    | ✅ Tested | Full support |
-| 14.x       | 0.1.0+    | ✅ Tested | Full support |
+| 13.x       | 0.1.0 – 0.2.x | ⛔ Dropped in 0.3.0 | EOL (Nov 2025); 0.3.x requires PG 14+ |
+| 14.x       | 0.1.0+    | ✅ Tested | Minimum for 0.3.x |
 | 15.x       | 0.1.0+    | ✅ Tested | Full support |
 | 16.x       | 0.1.0+    | ✅ Tested | Full support |
 | 17.x       | 0.1.0+    | ✅ Tested | Full support (primary) |
 | 18.x       | 0.2.0+    | ⚠️ Beta  | Testing in progress |
+
+> **jsonb_delta 0.3.x requires PostgreSQL 14 or newer.** The binary-JSONB
+> rewrite uses `JsonbToJsonbValue`, which was added to PostgreSQL's C API in
+> version 14. PostgreSQL 13 (end-of-life since November 2025) is supported only
+> through jsonb_delta 0.2.x.
 
 ## Feature Availability
 
@@ -66,7 +71,7 @@ All versions tested with:
 
 ## Installation by PostgreSQL Version
 
-### PostgreSQL 13-17
+### PostgreSQL 14-17
 
 ```bash
 # Install from source
@@ -87,7 +92,7 @@ cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --release
 
 ## Known Limitations
 
-### PostgreSQL 13-15
+### PostgreSQL 14-15
 
 - No JIT compilation support (available in PG 16+)
 - Slightly slower performance on complex queries
@@ -143,8 +148,8 @@ psql -d test_db -f test/benchmark_comparison.sql
 
 ## Version Policy
 
-- **Current**: PostgreSQL 13-17 (stable)
+- **Current**: PostgreSQL 14-17 (stable)
 - **Beta**: PostgreSQL 18 (testing)
 - **Future**: PostgreSQL 19+ (when released)
 
-We maintain compatibility with the last 5 major PostgreSQL versions to ensure broad adoption while keeping maintenance overhead manageable.
+We support the current maintained PostgreSQL major versions (14-17, with 18 in beta) to ensure broad adoption while keeping maintenance overhead manageable. PostgreSQL 13 reached end-of-life in November 2025 and is supported only through jsonb_delta 0.2.x.

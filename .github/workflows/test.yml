@@ -17,7 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pg-version: [13, 14, 15, 16, 17]
+        # PG13 is EOL and lacks pg_sys::JsonbToJsonbValue (added in PG14), which
+        # the 0.3.x binary rewrite depends on — see docs/COMPATIBILITY.md.
+        pg-version: [14, 15, 16, 17]
 
     steps:
       - name: Checkout code
