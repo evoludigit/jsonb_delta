@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.1]
 
-> Packaging-only release. **No change to the extension itself** — the shared
-> object, every function signature, volatility, strictness and parallel-safety
-> are byte-for-byte those of 0.3.0. `ALTER EXTENSION jsonb_delta UPDATE TO
-> '0.3.1'` is a no-op beyond advancing the version label.
+> A packaging and compatibility-matrix release. **The compiled extension does
+> not change** — the shared object, every function signature, volatility,
+> strictness and parallel-safety are byte-for-byte those of 0.3.0, and `ALTER
+> EXTENSION jsonb_delta UPDATE TO '0.3.1'` is a no-op beyond advancing the
+> version label. What changes is the set of PostgreSQL versions we build for
+> (see _Changed_) and the release automation (see _Fixed_).
+
+### Changed
+- **PostgreSQL 13 dropped — jsonb_delta 0.3.x requires PostgreSQL 14+.** The
+  0.3.0 binary rewrite uses `JsonbToJsonbValue`, which was added to PostgreSQL's
+  C API in version 14, so 0.3.x never compiled on PostgreSQL 13. (This went
+  unnoticed because the 0.3.0 release build had already failed for an unrelated
+  reason — the `cliff.toml` gap fixed under #24 — masking the PG13 compile
+  error underneath.) PostgreSQL 13 reached end-of-life in November 2025. It is
+  removed from the CI build and test matrices and from `docs/COMPATIBILITY.md`;
+  PostgreSQL 13 users should remain on jsonb_delta 0.2.x.
 
 ### Fixed
 - **Release automation now produces a GitHub Release with prebuilt packages**
