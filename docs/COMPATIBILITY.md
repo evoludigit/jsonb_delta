@@ -21,6 +21,28 @@
 | Nested paths | ✅ (v0.2.0+) | ✅ | Requires jsonb_delta 0.2.0+ |
 | Depth limits | ✅ (v0.2.0+) | ✅ | Security hardening |
 
+## Consumer Compatibility
+
+### pg_tviews
+
+[pg_tviews](https://github.com/fraiseql/pg_tviews) uses jsonb_delta to accelerate
+incremental view maintenance. The compatibility contract is deliberately small:
+
+- **One runtime symbol.** pg_tviews depends on exactly one function at runtime,
+  `jsonb_smart_patch_scalar(jsonb, jsonb) -> jsonb`. Its full signature — arguments,
+  result, and `IMMUTABLE STRICT PARALLEL SAFE` — is frozen against `pg_proc` by the
+  contract test in `src/contract.rs`, so it cannot drift under a consumer (this is the
+  guard for jsonb_delta [#12](https://github.com/evoludigit/jsonb_delta/issues/12) /
+  `fraiseql/pg_tviews#50`).
+- **Optional at runtime.** pg_tviews degrades gracefully to full-row recomputation when
+  jsonb_delta is absent, so a missing extension is never a hard failure.
+- **Any 0.3.x works.** The SQL contract is unchanged across `0.2.0 → 0.3.0 → 0.3.1` — the
+  0.3.x line is a binary-representation rewrite and a packaging release, not an API change —
+  so pg_tviews needs no code change to move between them.
+
+pg_tviews does **not** call `jsonb_smart_patch_array` in any signature; array- and
+nested-object tviews use full-row recomputation.
+
 ## Testing Matrix
 
 All versions tested with:
@@ -125,5 +147,4 @@ psql -d test_db -f test/benchmark_comparison.sql
 - **Beta**: PostgreSQL 18 (testing)
 - **Future**: PostgreSQL 19+ (when released)
 
-We maintain compatibility with the last 5 major PostgreSQL versions to ensure broad adoption while keeping maintenance overhead manageable.</content>
-<parameter name="filePath">docs/COMPATIBILITY.md
+We maintain compatibility with the last 5 major PostgreSQL versions to ensure broad adoption while keeping maintenance overhead manageable.
