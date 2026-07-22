@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1]
+
+> Packaging-only release. **No change to the extension itself** — the shared
+> object, every function signature, volatility, strictness and parallel-safety
+> are byte-for-byte those of 0.3.0. `ALTER EXTENSION jsonb_delta UPDATE TO
+> '0.3.1'` is a no-op beyond advancing the version label.
+
+### Fixed
+- **Release automation now produces a GitHub Release with prebuilt packages**
+  (#24). The 0.3.0 tag's release workflow failed on a `generate-changelog` job
+  that referenced a `cliff.toml` which never existed in the repo, so 0.3.0 had
+  to be published by hand and shipped source-only. The workflow now sources
+  release notes from the `## [x.y.z]` section of this file and depends only on
+  the build job, so the `pg13`–`pg17` tarballs are attached to the Release.
+  0.3.1 is cut specifically to exercise that fix and ship the binary packages
+  the manually-cut 0.3.0 Release lacked.
+
+### Documentation
+- Added a **consumer-compatibility note** for `pg_tviews` to
+  `docs/COMPATIBILITY.md`: the only symbol it depends on at runtime is
+  `jsonb_smart_patch_scalar(jsonb, jsonb)` (frozen by the contract test in
+  `src/contract.rs`), and it degrades gracefully when jsonb_delta is absent.
+
 ## [0.3.0]
 
 > The binary-JSONB rewrite. Versioned **0.3.0** — a distinct label from the
