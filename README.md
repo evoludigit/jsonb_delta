@@ -29,7 +29,7 @@ A PostgreSQL extension providing fast, targeted update primitives for JSONB docu
 |------|---------|--------|------------------|
 | **[pg_tviews](https://github.com/fraiseql/pg_tviews)** | Incremental materialized views | Beta | **100-500× faster** |
 | **[jsonb_delta](https://github.com/evoludigit/jsonb_delta)** | JSONB surgical updates | **Stable** ⭐ | **1.6–3.9×; up to ~21× coalesced** |
-| **[pgGit](https://github.com/evoludigit/pgGit)** | Database version control | Stable | Git for databases |
+| **[pgGit](https://github.com/evoludigit/pgGit)** | Database per branch or agent, attributed DDL history | In development (v2) | Not a schema source of truth; promotes into confiture |
 | **[confiture](https://github.com/fraiseql/confiture)** | PostgreSQL migrations | Stable | **300-600× faster** |
 | **[fraiseql](https://fraiseql.dev)** | GraphQL framework | Stable | **7-10× faster** |
 | **[fraiseql-data](https://github.com/fraiseql/fraiseql-seed)** | Seed data generation | Phase 6 | Auto-dependency resolution |
