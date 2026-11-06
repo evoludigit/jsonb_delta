@@ -144,4 +144,7 @@ psql -d test_db -f test/benchmark_comparison.sql
 - **Current**: PostgreSQL 14-18 (stable)
 - **Future**: PostgreSQL 19+ (when released)
 
-We support the current maintained PostgreSQL major versions (14-18) to ensure broad adoption while keeping maintenance overhead manageable. PostgreSQL 13 reached end-of-life in November 2025 and is supported only through jsonb_delta 0.2.x.
+We support the current maintained PostgreSQL major versions (14-18) to ensure
+broad adoption while keeping maintenance overhead manageable. PostgreSQL 13
+reached end-of-life in November 2025 and is supported only through jsonb_delta
+0.2.x.

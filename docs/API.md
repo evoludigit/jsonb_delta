@@ -145,7 +145,12 @@ SELECT jsonb_array_update_where(
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: single-pass over the array instead of one pass per update. Measured at parity (~1.07×) with native re-aggregation for 10 updates in a 100-element array; the current implementation scans the spec list per element (O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update counts. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
+**Performance**: single-pass over the array instead of one pass per update.
+Measured at parity (~1.07×) with native re-aggregation for 10 updates in a
+100-element array; the current implementation scans the spec list per element
+(O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update
+counts. See
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Use Case**: Update multiple items in an array in a single operation.
 
@@ -180,7 +185,11 @@ jsonb_array_update_multi_row(targets jsonb[], array_path text, match_key text, m
 
 **Properties**: `IMMUTABLE STRICT PARALLEL SAFE`
 
-**Performance**: amortizes per-call FFI overhead across the batch. **Not substantiated against native SQL** — this function is not in the CCX13 matrix (it needs an array-of-documents fixture); dev-host measurements showed only ~2× binary-vs-serde, not a ratio against a native baseline. The earlier "~4×" figure predates measurement.
+**Performance**: amortizes per-call FFI overhead across the batch. **Not
+substantiated against native SQL** — this function is not in the CCX13 matrix
+(it needs an array-of-documents fixture); dev-host measurements showed only ~2×
+binary-vs-serde, not a ratio against a native baseline. The earlier "~4×" figure
+predates measurement.
 
 **Use Case**: Bulk update operations across multiple rows (e.g., mark all pending orders as shipped).
 
