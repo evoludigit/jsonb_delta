@@ -111,7 +111,10 @@ jobs:
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           cargo pgrx schema pg${{ matrix.pg-version }} > /tmp/generated-schema.sql
 
-          if ! diff -u "sql/jsonb_delta--${VERSION}.sql" /tmp/generated-schema.sql; then
+          # Compare the SQL contract, not pgrx's "-- src/file.rs:LINE" comments,
+          # which move whenever unrelated code above a function changes.
+          contract() { grep -v '^--' "$1" | sed '/^[[:space:]]*$/d'; }
+          if ! diff -u <(contract "sql/jsonb_delta--${VERSION}.sql") <(contract /tmp/generated-schema.sql); then
             echo "❌ Generated schema doesn't match committed version!"
             echo "Run: just schema"
             exit 1
