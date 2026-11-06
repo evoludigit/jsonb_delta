@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2]
+
+> A packaging release. **The extension's behavior does not change** — the SQL
+> contract is identical to 0.3.1 (the only source edit removes a redundant
+> `else` after a diverging `error!`), and `ALTER EXTENSION jsonb_delta UPDATE TO
+> '0.3.2'` only advances the version label. 0.3.2 exists to ship a prebuilt PostgreSQL 18
+> package.
 
 ### Added
 - **PostgreSQL 18 is tested and released.** 18 joins the CI test matrix and the
@@ -20,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Dockerfile installs PostgreSQL dev headers from the PGDG repository (it
   previously asked bookworm for `postgresql-server-dev-17`, which Debian does
   not ship) and takes the major version as a `PG_MAJOR` build argument.
+
+### Fixed
+- **CI could not install PostgreSQL.** `ubuntu-latest` moved to Ubuntu 26.04,
+  which no longer ships `apt-key`; every workflow now uses PGDG's
+  `apt.postgresql.org.sh`. Without this, a release tag would build no packages.
+- The schema-validation check compares the SQL contract instead of pgrx's
+  source-line comments, so moving code no longer fails it.
+- Dev-dependency `ctutils` bumped to 0.4.8 (RUSTSEC-2026-0385).
 
 ## [0.3.1]
 

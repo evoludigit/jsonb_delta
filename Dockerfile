@@ -55,7 +55,7 @@ RUN apt-get update && \
 # Labels for security scanning
 LABEL org.opencontainers.image.title="jsonb_delta"
 LABEL org.opencontainers.image.description="Efficient JSONB delta and patch operations for PostgreSQL"
-LABEL org.opencontainers.image.version="0.3.1"
+LABEL org.opencontainers.image.version="0.3.2"
 LABEL org.opencontainers.image.vendor="Evolution Digitale"
 LABEL org.opencontainers.image.licenses="PostgreSQL"
 LABEL org.opencontainers.image.source="https://github.com/evoludigit/jsonb_delta"
