@@ -26,13 +26,12 @@ jobs:
 
       - name: Install PostgreSQL ${{ matrix.pg-version }}
         run: |
-          # Add PostgreSQL official repository for versions not in Ubuntu default repos
-          if [[ "${{ matrix.pg-version }}" != "16" ]]; then
-            sudo apt-get install -y wget ca-certificates
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-            echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-            sudo apt-get update
-          fi
+          # Always use PGDG: the runner's own Ubuntu release ships only one
+          # PostgreSQL major. apt.postgresql.org.sh installs the signing key and
+          # repo (apt-key no longer exists on current runners).
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y \
             postgresql-${{ matrix.pg-version }} \
             postgresql-server-dev-${{ matrix.pg-version }}
