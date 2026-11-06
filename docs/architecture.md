@@ -90,8 +90,8 @@ them.
 ### Technology Stack
 
 - **Language**: Rust (Edition 2021)
-- **Framework**: [pgrx](https://github.com/pgcentralfoundation/pgrx) 0.12.8
-- **Target**: PostgreSQL 13-17
+- **Framework**: [pgrx](https://github.com/pgcentralfoundation/pgrx) 0.17.0
+- **Target**: PostgreSQL 14–18 (see [COMPATIBILITY.md](COMPATIBILITY.md))
 - **Build**: cargo + cargo-pgrx
 
 ### Core Algorithm: Array Update

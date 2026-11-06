@@ -8,8 +8,12 @@
 | 14.x       | 0.1.0+    | ✅ Tested | Minimum for 0.3.x |
 | 15.x       | 0.1.0+    | ✅ Tested | Full support |
 | 16.x       | 0.1.0+    | ✅ Tested | Full support |
-| 17.x       | 0.1.0+    | ✅ Tested | Full support (primary) |
-| 18.x       | 0.2.0+    | ⚠️ Beta  | Testing in progress |
+| 17.x       | 0.1.0+    | ✅ Tested | Full support |
+| 18.x       | 0.2.0+    | ✅ Tested | Full support (default build target); prebuilt release tarballs from 0.3.2 |
+
+This table is the authoritative statement of the supported range: **jsonb_delta
+0.3.x supports PostgreSQL 14–18**, each tested in CI and shipped as a prebuilt
+release tarball. Other documents link here and don't restate it.
 
 > **jsonb_delta 0.3.x requires PostgreSQL 14 or newer.** The binary-JSONB
 > rewrite uses `JsonbToJsonbValue`, which was added to PostgreSQL's C API in
@@ -18,7 +22,7 @@
 
 ## Feature Availability
 
-| Feature | PG 13-17 | PG 18 | Notes |
+| Feature | PG 14-17 | PG 18 | Notes |
 |---------|----------|-------|-------|
 | Basic merge | ✅ | ✅ | All versions |
 | Deep merge | ✅ | ✅ | All versions |
@@ -71,22 +75,16 @@ All versions tested with:
 
 ## Installation by PostgreSQL Version
 
-### PostgreSQL 14-17
+### PostgreSQL 14-18
 
 ```bash
-# Install from source
+# Pre-built: download jsonb_delta-<tag>-pg<major>.tar.gz from GitHub Releases
+# and extract it at / (it contains usr/lib/postgresql/<major>/... and
+# usr/share/postgresql/<major>/...).
+
+# From source (replace 18 with your major version)
 git clone https://github.com/evoludigit/jsonb_delta.git
 cd jsonb_delta
-cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release
-
-# Or use pre-built packages (when available)
-# Download from GitHub releases
-```
-
-### PostgreSQL 18 (Beta)
-
-```bash
-# PostgreSQL 18 support requires jsonb_delta v0.2.0+
 cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --release
 ```
 
@@ -96,11 +94,6 @@ cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --release
 
 - No JIT compilation support (available in PG 16+)
 - Slightly slower performance on complex queries
-
-### PostgreSQL 18 Beta Support
-
-- New features may have compatibility issues
-- Report bugs to [GitHub Issues](https://github.com/evoludigit/jsonb_delta/issues)
 
 ## Migration Guide
 
@@ -130,7 +123,7 @@ To verify compatibility with your PostgreSQL version:
 
 ```bash
 # Run full test suite
-cargo pgrx test pg17
+cargo pgrx test pg18   # or pg14 … pg17
 
 # Run smoke tests
 psql -d test_db -f test/smoke_test_v0.1.0.sql
@@ -148,8 +141,7 @@ psql -d test_db -f test/benchmark_comparison.sql
 
 ## Version Policy
 
-- **Current**: PostgreSQL 14-17 (stable)
-- **Beta**: PostgreSQL 18 (testing)
+- **Current**: PostgreSQL 14-18 (stable)
 - **Future**: PostgreSQL 19+ (when released)
 
-We support the current maintained PostgreSQL major versions (14-17, with 18 in beta) to ensure broad adoption while keeping maintenance overhead manageable. PostgreSQL 13 reached end-of-life in November 2025 and is supported only through jsonb_delta 0.2.x.
+We support the current maintained PostgreSQL major versions (14-18) to ensure broad adoption while keeping maintenance overhead manageable. PostgreSQL 13 reached end-of-life in November 2025 and is supported only through jsonb_delta 0.2.x.

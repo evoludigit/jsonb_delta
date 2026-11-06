@@ -4,7 +4,7 @@ Get started with jsonb_delta in 5 minutes.
 
 ## Prerequisites
 
-- PostgreSQL 13-17
+- PostgreSQL 14–18 (see [COMPATIBILITY.md](COMPATIBILITY.md))
 - Rust 1.70+ (for building from source)
 
 ## Installation

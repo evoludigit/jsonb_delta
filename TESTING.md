@@ -287,9 +287,9 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 
 # Full test matrix (requires all PostgreSQL versions)
-# ⚠️ IMPORTANT: CI only tests PostgreSQL 17 for speed
-#    Run this locally before major releases to ensure compatibility
-for version in 13 14 15 16 17 18; do
+# CI runs the SQL suite on PostgreSQL 14–18; pg_test runs locally
+#   Run this locally before major releases to ensure compatibility
+for version in 14 15 16 17 18; do
     echo "→ Testing PostgreSQL $version..."
     cargo pgrx test pg$version --release
 done
@@ -382,7 +382,7 @@ $$;
 **File**: `.github/workflows/test.yml`
 
 **Matrix**:
-- PostgreSQL versions: **17 only** (for CI speed; local testing covers all versions 13-18)
+- PostgreSQL versions: **14–18** (SQL integration suite per version)
 - Operating systems: Ubuntu
 
 **Steps**:
@@ -467,7 +467,7 @@ createdb test_jsonb_delta
 ### Tests Pass Locally But Fail in CI
 
 **Possible causes**:
-1. **Different PostgreSQL version**: Test on all supported versions (13-17)
+1. **Different PostgreSQL version**: Test on all supported versions (14–18)
 2. **Platform differences**: Test on both Ubuntu and macOS if possible
 3. **Schema drift**: Regenerate schema with `cargo pgrx schema`
 4. **Cached state**: Clean build with `cargo clean && just test`
@@ -554,7 +554,7 @@ just test        # Full testing
 ### For CI/CD
 
 - Uses SQL integration tests (production-like)
-- Tests PostgreSQL 13-17 × (Ubuntu + macOS)
+- Tests PostgreSQL 14–18 on Ubuntu
 - Validates schema generation
 - Generates coverage reports
 

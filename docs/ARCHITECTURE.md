@@ -348,7 +348,6 @@ serde_json = "1.0"
 
 ```toml
 [features]
-pg13 = ["pgrx/pg13"]
 pg14 = ["pgrx/pg14"]
 ...
 pg18 = ["pgrx/pg18"]

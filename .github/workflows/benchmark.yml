@@ -31,7 +31,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install PostgreSQL 17
+      - name: Install PostgreSQL 18
         run: |
           # Add PostgreSQL APT repository
           sudo apt-get install -y wget gnupg
@@ -40,14 +40,14 @@ jobs:
 
           sudo apt-get update
           sudo apt-get install -y \
-            postgresql-17 \
-            postgresql-server-dev-17
+            postgresql-18 \
+            postgresql-server-dev-18
 
           # Create and start cluster if it doesn't exist
-          if ! sudo pg_lsclusters | grep -q "17 main"; then
-            sudo pg_createcluster 17 main --start
+          if ! sudo pg_lsclusters | grep -q "18 main"; then
+            sudo pg_createcluster 18 main --start
           else
-            sudo pg_ctlcluster 17 main start || true
+            sudo pg_ctlcluster 18 main start || true
           fi
 
           # Verify cluster is running
@@ -58,18 +58,18 @@ jobs:
         run: cargo install --locked cargo-pgrx --version 0.17.0
 
       - name: Initialize pgrx
-        run: cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+        run: cargo pgrx init --pg18=/usr/lib/postgresql/18/bin/pg_config
 
       - name: Build extension
-        run: cargo build --release --locked --no-default-features --features pg17
+        run: cargo build --release --locked --no-default-features --features pg18
 
       - name: Install extension
-        run: cargo pgrx install --pg-config=/usr/lib/postgresql/17/bin/pg_config --release --sudo
+        run: cargo pgrx install --pg-config=/usr/lib/postgresql/18/bin/pg_config --release --sudo
 
       - name: Run benchmarks
         run: |
-          # Get the port for PostgreSQL 17
-          PG_PORT=$(sudo pg_lsclusters -h | grep "^17 main" | awk '{print $3}')
+          # Get the port for PostgreSQL 18
+          PG_PORT=$(sudo pg_lsclusters -h | grep "^18 main" | awk '{print $3}')
           echo "Using PostgreSQL on port $PG_PORT"
 
           sudo -u postgres psql -p "$PG_PORT" -c "DROP DATABASE IF EXISTS test_jsonb_delta;" || true

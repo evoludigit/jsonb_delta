@@ -1,13 +1,27 @@
 # Dockerfile for jsonb_delta PostgreSQL Extension
 # Multi-stage build optimized for security scanning
 
-FROM rust:1.85-slim-bookworm AS base
+ARG PG_MAJOR=18
 
-# Install build essentials and PostgreSQL dev tools
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    pkg-config \
-    postgresql-server-dev-17 \
+FROM rust:1-slim-bookworm AS base
+
+ARG PG_MAJOR
+
+# Install build essentials and PostgreSQL dev tools. Debian ships only one
+# PostgreSQL major per release, so pull PG_MAJOR from the PGDG repository.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        libclang-dev \
+        pkg-config \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        postgresql-server-dev-${PG_MAJOR} \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pgrx
@@ -15,8 +29,10 @@ RUN cargo install --locked cargo-pgrx --version 0.17.0
 
 FROM base AS builder
 
+ARG PG_MAJOR
+
 # Initialize pgrx (cached)
-RUN cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+RUN cargo pgrx init --pg${PG_MAJOR}=/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config
 
 WORKDIR /build
 
@@ -27,7 +43,7 @@ COPY sql/ ./sql/
 COPY jsonb_delta.control ./
 
 # Build and package extension
-RUN cargo pgrx package --pg-config=/usr/lib/postgresql/17/bin/pg_config
+RUN cargo pgrx package --pg-config=/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config
 
 # Install security updates
 RUN apt-get update && \
@@ -39,7 +55,7 @@ RUN apt-get update && \
 # Labels for security scanning
 LABEL org.opencontainers.image.title="jsonb_delta"
 LABEL org.opencontainers.image.description="Efficient JSONB delta and patch operations for PostgreSQL"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.3.1"
 LABEL org.opencontainers.image.vendor="Evolution Digitale"
 LABEL org.opencontainers.image.licenses="PostgreSQL"
 LABEL org.opencontainers.image.source="https://github.com/evoludigit/jsonb_delta"
