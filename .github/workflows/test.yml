@@ -19,7 +19,7 @@ jobs:
       matrix:
         # PG13 is EOL and lacks pg_sys::JsonbToJsonbValue (added in PG14), which
         # the 0.3.x binary rewrite depends on — see docs/COMPATIBILITY.md.
-        pg-version: [14, 15, 16, 17]
+        pg-version: [14, 15, 16, 17, 18]
 
     steps:
       - name: Checkout code
@@ -44,9 +44,10 @@ jobs:
       - name: Install PostgreSQL
         run: |
           # Add PostgreSQL APT repository
-          sudo apt-get install -y wget gnupg
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          # apt.postgresql.org.sh installs the PGDG signing key and repo for this
+          # Ubuntu release (apt-key no longer exists on current runners)
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 
           sudo apt-get update
           sudo apt-get install -y postgresql-${{ matrix.pg-version }} postgresql-server-dev-${{ matrix.pg-version }}
@@ -110,7 +111,10 @@ jobs:
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           cargo pgrx schema pg${{ matrix.pg-version }} > /tmp/generated-schema.sql
 
-          if ! diff -u "sql/jsonb_delta--${VERSION}.sql" /tmp/generated-schema.sql; then
+          # Compare the SQL contract, not pgrx's "-- src/file.rs:LINE" comments,
+          # which move whenever unrelated code above a function changes.
+          contract() { grep -v '^--' "$1" | sed '/^[[:space:]]*$/d'; }
+          if ! diff -u <(contract "sql/jsonb_delta--${VERSION}.sql") <(contract /tmp/generated-schema.sql); then
             echo "❌ Generated schema doesn't match committed version!"
             echo "Run: just schema"
             exit 1
@@ -133,11 +137,11 @@ jobs:
           sudo -u postgres psql -p "$PG_PORT" -d test_jsonb_delta_upgrade -v ON_ERROR_STOP=1 -f test/upgrade_path_test.sql
 
       - name: Generate coverage report
-        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        if: matrix.pg-version == 18 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
         run: |
           cargo install cargo-tarpaulin
           # Run tarpaulin with correct pgrx flags
-          cargo tarpaulin --no-default-features --features pg17 \
+          cargo tarpaulin --no-default-features --features pg18 \
             --out Xml --output-dir ./coverage || {
             echo "⚠️  cargo-tarpaulin failed (common with pgrx extensions)"
             echo "Creating empty coverage file for workflow to continue"
@@ -146,21 +150,21 @@ jobs:
           }
 
       - name: Upload to Codecov
-        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        if: matrix.pg-version == 18 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage/cobertura.xml
           fail_ci_if_error: false  # Don't block on coverage issues
 
       - name: Check coverage threshold
-        if: matrix.pg-version == 17 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+        if: matrix.pg-version == 18 && (github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'coverage'))
         continue-on-error: true  # Don't fail the build if coverage check fails
         run: |
           # Install jq for JSON parsing
           sudo apt-get update && sudo apt-get install -y jq
 
           # Generate JSON coverage report with correct flags
-          if cargo tarpaulin --no-default-features --features pg17 \
+          if cargo tarpaulin --no-default-features --features pg18 \
                --out Json --output-dir ./coverage 2>/dev/null; then
             # Extract coverage percentage
             COVERAGE=$(jq -r '.coverage' ./coverage/coverage.json 2>/dev/null || echo "0")
@@ -212,9 +216,10 @@ jobs:
 
       - name: Install PostgreSQL 17
         run: |
-          sudo apt-get install -y wget gnupg
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          # apt.postgresql.org.sh installs the PGDG signing key and repo for this
+          # Ubuntu release (apt-key no longer exists on current runners)
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get update
           sudo apt-get install -y postgresql-17 postgresql-server-dev-17
 
@@ -253,9 +258,10 @@ jobs:
 
       - name: Install PostgreSQL 17
         run: |
-          sudo apt-get install -y wget gnupg
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          # apt.postgresql.org.sh installs the PGDG signing key and repo for this
+          # Ubuntu release (apt-key no longer exists on current runners)
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get update
           sudo apt-get install -y postgresql-17 postgresql-server-dev-17
 

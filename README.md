@@ -155,7 +155,7 @@ jsonb_delta uses single-pass iteration with minimal allocations.
 - ⚡ **1.6–3.9× faster** than native SQL re-aggregation for surgical update/delete ([benchmarks](benchmarks/2026-07-21-issue15-ccx13.md))
 - 🎯 **Surgical updates** - modify only what changed
 - 🛡️ **Null-safe** - graceful handling of missing paths/keys
-- 🔧 **Production-ready** - extensively tested on PostgreSQL 13-18
+- 🔧 **Production-ready** - tested in CI on PostgreSQL 14–18 ([compatibility](docs/COMPATIBILITY.md))
 - 📦 **Zero dependencies** - pure Rust with pgrx
 
 ---
@@ -508,7 +508,7 @@ Optimize materialized view maintenance with surgical JSONB updates.
 
 ## Requirements
 
-- PostgreSQL 13-18
+- PostgreSQL 14–18 (see [COMPATIBILITY.md](docs/COMPATIBILITY.md))
 - Rust 1.70+ (for building from source)
 - pgrx 0.17.0
 

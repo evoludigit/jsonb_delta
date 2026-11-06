@@ -890,13 +890,12 @@ unsafe fn resolve_path_object(
                     &full[..depth],
                     jsonb_type_name(v)
                 );
-            } else {
-                error!(
-                    "Path navigation failed at {:?}, expected object, got: {}",
-                    &full[..=depth],
-                    jsonb_type_name(v)
-                );
             }
+            error!(
+                "Path navigation failed at {:?}, expected object, got: {}",
+                &full[..=depth],
+                jsonb_type_name(v)
+            );
         }
         c
     }

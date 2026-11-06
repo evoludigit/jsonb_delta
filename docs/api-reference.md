@@ -469,7 +469,10 @@ jsonb_array_update_where(
 ) RETURNS jsonb
 ```
 
-**Performance**: O(n) where n = array length. Measured **1.7–2.5×** faster than native SQL re-aggregation for integer keys (up to ~3.9× for text keys), and the ratio **rises** with array size rather than falling. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
+**Performance**: O(n) where n = array length. Measured **1.7–2.5×** faster than
+native SQL re-aggregation for integer keys (up to ~3.9× for text keys), and the
+ratio **rises** with array size rather than falling. See
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 
@@ -501,7 +504,12 @@ jsonb_array_update_where_batch(
 ) RETURNS jsonb
 ```
 
-**Performance**: one pass over the array instead of one pass per update. Measured at parity (~1.07×) with native re-aggregation for 10 updates in a 100-element array; the current implementation scans the spec list per element (O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update counts. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
+**Performance**: one pass over the array instead of one pass per update.
+Measured at parity (~1.07×) with native re-aggregation for 10 updates in a
+100-element array; the current implementation scans the spec list per element
+(O(elements × specs)), so `jsonb_apply_changeset` overtakes it at high update
+counts. See
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 
@@ -535,7 +543,11 @@ jsonb_array_update_multi_row(
 ) RETURNS jsonb[]
 ```
 
-**Performance**: amortizes per-call FFI overhead across the batch. **Not substantiated against native SQL** — not in the CCX13 matrix (needs an array-of-documents fixture); dev-host measured only ~2× binary-vs-serde. The earlier "~4×" figure predates measurement. See [../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
+**Performance**: amortizes per-call FFI overhead across the batch. **Not
+substantiated against native SQL** — not in the CCX13 matrix (needs an
+array-of-documents fixture); dev-host measured only ~2× binary-vs-serde. The
+earlier "~4×" figure predates measurement. See
+[../benchmarks/2026-07-21-issue15-ccx13.md](../benchmarks/2026-07-21-issue15-ccx13.md).
 
 **Example**:
 

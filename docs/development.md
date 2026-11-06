@@ -3,8 +3,8 @@
 ## Prerequisites
 
 - Rust 1.83+ (install via [rustup](https://rustup.rs))
-- PostgreSQL 13-17 with dev headers
-- cargo-pgrx 0.12.8+
+- PostgreSQL 14–18 with dev headers (see [COMPATIBILITY.md](COMPATIBILITY.md))
+- cargo-pgrx 0.17.0
 
 ## Setup
 
@@ -49,7 +49,7 @@ cargo pgrx run pg17
 
 ```bash
 # Test all supported versions
-for ver in 13 14 15 16 17; do
+for ver in 14 15 16 17 18; do
     echo "Testing PostgreSQL $ver..."
     cargo pgrx test pg$ver || break
 done
@@ -103,7 +103,7 @@ tail -f ~/.pgrx/data-17/logfile
 
 ## CI/CD
 
-All commits are tested against PostgreSQL 13-17 via GitHub Actions.
+All commits are tested against PostgreSQL 14–18 via GitHub Actions.
 
 Workflows:
 - `.github/workflows/test.yml` - Multi-version PostgreSQL testing

@@ -123,7 +123,7 @@ Enhancement suggestions are welcome! Please provide:
 
 ### PostgreSQL Compatibility
 
-- Test against multiple PostgreSQL versions (13-18)
+- Test against multiple PostgreSQL versions (14–18, see [COMPATIBILITY.md](docs/COMPATIBILITY.md))
 - Use pgrx features appropriately
 - Document version-specific behavior
 

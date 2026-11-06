@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **PostgreSQL 18 is tested and released.** 18 joins the CI test matrix and the
+  release matrix, so tagged releases ship a prebuilt
+  `jsonb_delta-<tag>-pg18.tar.gz` alongside 14–17. Coverage, the benchmark
+  workflow and the Dockerfile now target 18, the default build target.
+
+### Changed
+- The supported range (PostgreSQL 14–18) is stated once, in
+  `docs/COMPATIBILITY.md`; other documents link to it.
+- Removed the `pg13` Cargo feature: 0.3.x does not compile on PostgreSQL 13.
+- The Dockerfile installs PostgreSQL dev headers from the PGDG repository (it
+  previously asked bookworm for `postgresql-server-dev-17`, which Debian does
+  not ship) and takes the major version as a `PG_MAJOR` build argument.
+
 ## [0.3.1]
 
 > A packaging and compatibility-matrix release. **The compiled extension does
