@@ -45,7 +45,7 @@ incremental view maintenance. The compatibility contract is deliberately small:
   `fraiseql/pg_tviews#50`).
 - **Optional at runtime.** pg_tviews degrades gracefully to full-row recomputation when
   jsonb_delta is absent, so a missing extension is never a hard failure.
-- **Any 0.3.x works.** The SQL contract is unchanged across `0.2.0 → 0.3.0 → 0.3.1` — the
+- **Any 0.3.x works.** The SQL contract is unchanged across `0.2.0 → 0.3.0 → 0.3.1 → 0.3.2` — the
   0.3.x line is a binary-representation rewrite and a packaging release, not an API change —
   so pg_tviews needs no code change to move between them.
 
